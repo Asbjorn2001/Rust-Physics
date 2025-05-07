@@ -1,0 +1,17 @@
+[package]
+name = "piston-game"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "piston-game"
+
+[dependencies]
+piston = "1.0.0"
+piston2d-graphics = "0.44.0"
+pistoncore-glutin_window = "0.72.0"
+piston2d-opengl_graphics = "0.85.0"
+rand = "0.9.1"
+num-traits = "0.2.19"
+piston_window = "0.132.0"
+vecmath = "1.0.0"
