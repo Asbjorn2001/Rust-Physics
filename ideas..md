@@ -19,3 +19,7 @@ multiplayer game of 2 teams / 2 player game
 
 **Idea 4 Alternative pool**
 - A type of pool with different shapes and object
+
+**Tower build / defense**
+- Who builds the tallest and most stable towers? 
+- A timer runs whil you build, then you get to destroy each others towers afterwards.

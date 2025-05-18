@@ -3,6 +3,9 @@ use core::str;
 use std::ops::*;
 use rand::Rng;
 
+use super::helpers;
+
+pub const EPSILON: f64 = 0.0005;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Vector2f<T: Float> {
@@ -27,6 +30,10 @@ impl<T: Float> Vector2f<T> {
 
     pub fn len(&self) -> T {
         T::sqrt(T::powi(self.x, 2) + T::powi(self.y, 2))
+    }
+
+    pub fn len_squared(&self) -> T {
+        self.x * self.x + self.y * self.y
     }
 
     pub fn normalize(&self) -> Self {
@@ -56,6 +63,11 @@ impl Vector2f<f64> {
 
     pub fn zero() -> Self {
         Vector2f { x: 0.0, y: 0.0 }
+    }
+
+    pub fn nearly_equal(self, other: Self, tolerance: f64) -> bool {
+        helpers::nearly_equal(self.x, other.x, tolerance) &&
+        helpers::nearly_equal(self.y, other.y, tolerance)
     }
 }
 

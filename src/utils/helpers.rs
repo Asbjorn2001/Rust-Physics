@@ -8,3 +8,7 @@ pub fn get_pair_mut<T>(vec: &mut Vec<T>, i: usize, j: usize) -> (&mut T, &mut T)
         (&mut tail[0], &mut head[j])
     }
 }
+
+pub fn nearly_equal(a: f64, b: f64, tolerance: f64) -> bool {
+    (a - b).abs() < tolerance
+}

@@ -1,10 +1,10 @@
 use std::f64::consts::PI;
 
 use crate::Vector2f;
-use crate::Renderable;
+use crate::physics::shape::Renderable;
 use crate::Context;
 use crate::GlGraphics;
-use crate::shapes::geometry::Geometry;
+use crate::physics::shape::Shape;
 
 #[derive(Clone)]
 pub struct Polygon {
@@ -22,7 +22,7 @@ impl Renderable for Polygon {
     }
 }
 
-impl Geometry for Polygon {
+impl Shape for Polygon {
     fn area(&self) -> f64 {
         let n = self.local_vertices.len();
         let mut sum = 0.0;
@@ -32,6 +32,19 @@ impl Geometry for Polygon {
             sum += p1.cross(p2);
         }
         sum.abs() / 2.0
+    }
+
+    fn momemnt_of_inertia(&self) -> f64 {
+        let n = self.local_vertices.len();
+        let mut intertia = 0.0; 
+
+        for i in 0..n {
+            let p1 = self.local_vertices[i];
+            let p2 = self.local_vertices[(i + 1) % n];
+            intertia += p1.cross(p2) * (p1.dot(p1) + p1.dot(p2) + p2.dot(p2));
+        }
+        
+        (intertia / 12.0).abs()
     }
 
     fn contains_point(&self, point: Vector2f<f64>) -> bool {
@@ -83,6 +96,7 @@ impl Polygon {
     pub fn new_regular_polygon(n_sides: u8, radius: f64, center: Vector2f<f64>, color: [f32; 4]) -> Self {
         let mut angle = PI * 270.0 / 180.0; // Starting at 270 degrees
         let angle_increment = (2.0 * PI) / n_sides as f64;
+        if n_sides % 2 == 0 { angle += angle_increment / 2.0; }
         let mut local_verts = vec![];
         for _ in 0..n_sides {
             let x = radius * f64::cos(angle);
@@ -100,7 +114,7 @@ impl Polygon {
     }
 
     pub fn new(vertices: Vec<Vector2f<f64>>, center_pos: Vector2f<f64>, color: [f32; 4]) -> Self {
-        let center = Self::compute_centroid(&vertices);
+        let center = Self::compute_center(&vertices);
         let localized_verts: Vec<Vector2f<f64>> = vertices.iter().map(|&v| v - center).collect();
 
         Self { 
@@ -130,7 +144,7 @@ impl Polygon {
         closest_vertex
     }
 
-    pub fn compute_centroid(vertices: &Vec<Vector2f<f64>>) -> Vector2f<f64> {
+    pub fn compute_center(vertices: &Vec<Vector2f<f64>>) -> Vector2f<f64> {
         let mut sum_center: Vector2f<f64> = Vector2f::zero();
         let mut sum_weight = 0.0;
         let n = vertices.len();
