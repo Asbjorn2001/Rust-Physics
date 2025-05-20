@@ -20,6 +20,7 @@ pub const BASE_ELASTICITY: f64 = 0.5;
 pub struct RigidBody {
     pub linear_velocity: Vector2f<f64>,
     pub angular_velocity: f64,
+    pub density: f64,
     pub elasticity: f64,
     pub static_friction: f64,
     pub dynamic_friction: f64,
@@ -32,6 +33,7 @@ impl From<Circle> for RigidBody {
         Self { 
             linear_velocity: Vector2f::zero(), 
             angular_velocity: 0.0, 
+            density: 1.0,
             elasticity: BASE_ELASTICITY, 
             static_friction: BASE_STATIC_FRICTION,
             dynamic_friction: BASE_DYNAMIC_FRICTION,
@@ -46,6 +48,7 @@ impl From<Polygon> for RigidBody {
         Self { 
             linear_velocity: Vector2f::zero(), 
             angular_velocity: 0.0, 
+            density: 1.0,
             elasticity: BASE_ELASTICITY, 
             static_friction: BASE_STATIC_FRICTION,
             dynamic_friction: BASE_DYNAMIC_FRICTION,
@@ -56,10 +59,11 @@ impl From<Polygon> for RigidBody {
 }
 
 impl RigidBody {
-    pub fn new(shape: ShapeType, elasticity: f64, static_friction: f64, dynamic_friction: f64, is_static: bool) -> Self {
+    pub fn new(shape: ShapeType, density: f64, elasticity: f64, static_friction: f64, dynamic_friction: f64, is_static: bool) -> Self {
         Self { 
             linear_velocity: Vector2f::zero(), 
             angular_velocity: 0.0, 
+            density,
             elasticity, 
             static_friction, 
             dynamic_friction, 
@@ -73,13 +77,13 @@ impl RigidBody {
             return;
         }
 
-        self.linear_velocity += physics.gravity * dt;
+        self.linear_velocity += physics.gravity * dt;        
         self.linear_velocity *= 1.0 - physics.air_density * dt;
 
         self.angular_velocity *= 1.0 - physics.air_density * dt;
 
         self.shape.translate(self.linear_velocity * dt);  
-        self.shape.rotate(self.angular_velocity * dt);
+        self.shape.rotate(self.angular_velocity * dt);        
     }
 
     pub fn collide_with(&mut self, other: &mut RigidBody) -> Option<CollisionData> {
@@ -132,66 +136,51 @@ impl RigidBody {
         }
     }
 
-    pub fn resolve_collision(&mut self, other: &mut RigidBody, collision: &CollisionData, contact_points: Vec<Vector2f<f64>>) {
+    pub fn resolve_collision(&mut self, other: &mut RigidBody, normal: &Vector2f<f64>, contact_points: &Vec<Vector2f<f64>>) {
         let a = self;
         let b = other;
 
-        let a_inv_mass = if a.is_static { 0.0 } else { 1.0 / a.shape.area() };
-        let a_inv_inertia = if a.is_static { 0.0 } else { 1.0 / a.shape.momemnt_of_inertia() };
-        let b_inv_mass = if b.is_static { 0.0 } else { 1.0 / b.shape.area() };
-        let b_inv_inertia = if b.is_static { 0.0 } else { 1.0 / b.shape.momemnt_of_inertia() };
+        // Calculate constants
+        let a_inv_mass = if a.is_static { 0.0 } else { 1.0 / (a.shape.area() * a.density) };
+        let a_inv_inertia = if a.is_static { 0.0 } else { 1.0 / (a.shape.momemnt_of_inertia() * a.density) };
+        let b_inv_mass = if b.is_static { 0.0 } else { 1.0 / (b.shape.area() * b.density) };
+        let b_inv_inertia = if b.is_static { 0.0 } else { 1.0 / (b.shape.momemnt_of_inertia() * b.density) };
 
-        let CollisionData(_, normal) = *collision;
-        let contact_count = contact_points.len() as f64;
+        println!("a mass: {}, b mass: {}", 1.0 / a_inv_mass, 1.0 / b_inv_mass);
+        let elasticity = a.elasticity.min(b.elasticity);
 
-        let mut j_values: [f64; 2] = [0.0; 2];
-        let a_lin_vel = a.linear_velocity;
-        let b_lin_vel = b.linear_velocity;
-        let a_ang_vel = a.angular_velocity;
-        let b_ang_vel = b.angular_velocity;
-        for i in 0..contact_points.len() {
-            let ra = contact_points[i] - a.shape.get_center();
-            let rb = contact_points[i] - b.shape.get_center();
-            let a_contact_vel = a_lin_vel + ra.perpendicular() * a_ang_vel;
-            let b_contact_vel = b_lin_vel + rb.perpendicular() * b_ang_vel;
+        let sf = (a.static_friction + b.static_friction) / 2.0;
+        let df = (a.dynamic_friction + b.dynamic_friction) / 2.0;
+
+        let normal = *normal;
+        for contact_point in contact_points {
+            let ra = *contact_point - a.shape.get_center();
+            let rb = *contact_point - b.shape.get_center();
+            let a_contact_vel = a.linear_velocity + ra.perpendicular() * a.angular_velocity;
+            let b_contact_vel = b.linear_velocity + rb.perpendicular() * b.angular_velocity;
             let relative_velocity = a_contact_vel - b_contact_vel;
 
             if relative_velocity.dot(normal) < 0.0 { 
                 continue; 
             }
 
-            let elasticity = a.elasticity.min(b.elasticity);
             let v_rel = -(1.0 + elasticity) * relative_velocity.dot(normal);
             let denom = a_inv_mass + b_inv_mass + 
                 f64::powi(ra.cross(normal), 2) * a_inv_inertia + 
                 f64::powi(rb.cross(normal), 2) * b_inv_inertia;
 
-            let j = v_rel / (denom * contact_count);
-            j_values[i] = j;
-
+            let j = v_rel / denom;
             let a_impulse = normal * j;
             let b_impulse = normal * -j;
 
             a.linear_velocity += a_impulse * a_inv_mass;
             b.linear_velocity += b_impulse * b_inv_mass;
-
             a.angular_velocity += ra.cross(a_impulse) * a_inv_inertia;
             b.angular_velocity += rb.cross(b_impulse) * b_inv_inertia;
-        }
-        
-        // Calculate friction
-        let sf = (a.static_friction + b.static_friction) / 2.0;
-        let df = (a.dynamic_friction + b.dynamic_friction) / 2.0;
 
-        let a_lin_vel = a.linear_velocity;
-        let b_lin_vel = b.linear_velocity;
-        let a_ang_vel = a.angular_velocity;
-        let b_ang_vel = b.angular_velocity;
-        for i in 0..contact_points.len() {
-            let ra = contact_points[i] - a.shape.get_center();
-            let rb = contact_points[i] - b.shape.get_center();
-            let a_contact_vel = a_lin_vel + ra.perpendicular() * a_ang_vel;
-            let b_contact_vel = b_lin_vel + rb.perpendicular() * b_ang_vel;
+            // Calculate friction
+            let a_contact_vel = a.linear_velocity + ra.perpendicular() * a.angular_velocity;
+            let b_contact_vel = b.linear_velocity + rb.perpendicular() * b.angular_velocity;
             let relative_velocity = a_contact_vel - b_contact_vel;
             
             let mut tangent = relative_velocity - normal * relative_velocity.dot(normal);
@@ -206,8 +195,7 @@ impl RigidBody {
                 f64::powi(ra.cross(tangent), 2) * a_inv_inertia + 
                 f64::powi(rb.cross(tangent), 2) * b_inv_inertia;
 
-            let mut jt = v_rel / (denom * contact_count);
-            let j = j_values[i];
+            let mut jt = v_rel / denom;
             if jt.abs() > -j * sf {
                 jt = j * df;
             }
@@ -217,7 +205,6 @@ impl RigidBody {
 
             a.linear_velocity += a_friction_impulse * a_inv_mass;
             b.linear_velocity += b_friction_impulse * b_inv_mass;
-
             a.angular_velocity += ra.cross(a_friction_impulse) * a_inv_inertia;
             b.angular_velocity += rb.cross(b_friction_impulse) * b_inv_inertia;
         }

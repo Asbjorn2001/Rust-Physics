@@ -153,7 +153,6 @@ impl UIComponent for UISlider {
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             if self.contains_cursor(cursor_pos) {
                 self.pressed = true;
-                return true;
             }
         } else if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
             self.pressed = false;
@@ -203,18 +202,25 @@ pub struct UIButton {
     position: Vector2f<f64>,
     size: Vector2f<f64>,
     pub display: TextBox,
-    disabled: bool,
-    callback: fn(&mut Self, &mut Game),
+    pub is_hovered: bool,
+    on_click: fn(&mut Self, &mut Game),
+    on_change: fn(&mut Self, &mut Game),
 }
 
 impl UIButton {
-    pub fn new(position: Vector2f<f64>, size: Vector2f<f64>, display: TextBox, callback: fn(&mut Self, &mut Game)) -> Self {
+    pub fn new(
+        position: Vector2f<f64>, 
+        size: Vector2f<f64>, 
+        display: TextBox, 
+        on_click: fn(&mut Self, &mut Game), 
+        on_change: fn(&mut Self, &mut Game)) -> Self {
         Self { 
             position,
             size,
             display, 
-            disabled: false, 
-            callback 
+            is_hovered: false,
+            on_click,
+            on_change,
         }
     }
 
@@ -235,14 +241,24 @@ impl UIComponent for UIButton {
     }
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> bool {
-        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-            if !self.disabled && self.contains_cursor(cursor_pos) {
-                (self.callback)(self, game);
-                return true;
-            }
+        let mut change;
+        if self.contains_cursor(cursor_pos) {
+            change = self.is_hovered == false;
+            self.is_hovered = true;
+            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+                (self.on_click)(self, game);
+                change = true;
+            }    
+        } else {
+            change = self.is_hovered;
+            self.is_hovered = false;
         }
 
-        false
+        if change {
+            (self.on_change)(self, game);
+        }
+
+        change
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::game::Game;
+use crate::physics::collision::CollisionData;
 use crate::user_interface::interfaces::Interfaces;
 use crate::UIComponent;
 use crate::Vector2f;
@@ -8,6 +9,8 @@ use crate::color;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 use crate::physics::rigid_body::RigidBody;
+
+const PHYSICS_ITERATIONS: usize = 10;
 
 pub enum UIMode {
     Game,
@@ -96,16 +99,26 @@ impl GameController {
                 obj.update_vectors(args.dt, &self.game.settings.physics);
             }
 
+            // Detect collisions
+            let mut collisions = vec![];
             for i in 0..self.game.bodies.len() {
                 for j in (i+1)..self.game.bodies.len() {
                     let (a, b) = get_pair_mut(&mut self.game.bodies, i, j);
-                    if let Some(collision) = a.collide_with(b) {
-                        let contacts = a.find_contact_points(b, collision.1);
+                    if let Some(CollisionData(_, normal)) = a.collide_with(b) {
+                        let contacts = a.find_contact_points(b, normal);
                         for cp in contacts.clone() {
                             self.game.contacts.push(cp);
                         }
-                        a.resolve_collision(b, &collision, contacts);
+                        collisions.push((i, j, normal, contacts));
                     }
+                }
+            }
+
+            // Resolve collisions
+            for _ in 0..PHYSICS_ITERATIONS {
+                for (i, j, normal, contacts) in collisions.as_slice() {
+                    let (a, b) = get_pair_mut(&mut self.game.bodies, *i, *j);
+                    a.resolve_collision(b, normal, contacts);
                 }
             }
         }

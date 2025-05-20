@@ -35,12 +35,13 @@ static FONT: &str = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
 fn main() {
     // Change this to OpenGL::V2_1 if not working.
     let opengl = OpenGL::V3_2;
-    let start_dims = [1000.0, 1000.0];
+    let start_dims = [1280, 720];
 
     // Create a Glutin window.
     let mut window: Window = WindowSettings::new("piston-game", start_dims)
         .graphics_api(opengl)
         .exit_on_esc(true)
+        .resizable(false)
         .build()
         .unwrap();
     
@@ -61,22 +62,29 @@ fn main() {
         Vector2f::new(15.0, 15.0) 
     ];
 
-    let player_body = RigidBody::from(Polygon::new(
-        verts,
-        Vector2f::new(250.0, 250.0), 
-        color::PURPLE,
-    ));
+    let player_body = RigidBody::new(
+        ShapeType::Polygon(Polygon::new(
+            verts,
+            Vector2f::new(250.0, 250.0), 
+            color::PURPLE
+        )),
+        4.0, 
+        BASE_ELASTICITY, 
+        BASE_STATIC_FRICTION, 
+        BASE_DYNAMIC_FRICTION, 
+        false,
+    );
 
     let floor_shape = ShapeType::Polygon(Polygon::new_rectangle(
-        Vector2f::new(500.0, 800.0), 
+        Vector2f::new(640.0, 650.0), 
         800.0, 
         50.0, 
         color::OLIVE
     ));
-    let floor = RigidBody::new(floor_shape, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
+    let floor = RigidBody::new(floor_shape, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
 
     let mut ramp_shape1 = ShapeType::Polygon(Polygon::new_rectangle(
-        Vector2f::new(300.0, 600.0), 
+        Vector2f::new(450.0, 400.0), 
         400.0, 
         25.0, 
         color::TEAL
@@ -89,8 +97,8 @@ fn main() {
     ramp_shape2.rotate(-0.5);
     ramp_shape2.set_color(color::MAROON);
 
-    let ramp1 = RigidBody::new(ramp_shape1, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true); 
-    let ramp2 = RigidBody::new(ramp_shape2, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
+    let ramp1 = RigidBody::new(ramp_shape1, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true); 
+    let ramp2 = RigidBody::new(ramp_shape2, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
 
     let audio_manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default()).unwrap();
 
@@ -114,6 +122,7 @@ fn main() {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 graphics::clear(color::WHITE, g);
+
                 game_view.draw(&game_controller, &mut glyphs, c, g);
             });
         }

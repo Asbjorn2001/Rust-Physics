@@ -63,8 +63,8 @@ pub fn contact_poly_poly(a: &Polygon, b: &Polygon) -> Vec<Vector2f<f64>> {
                     point_segment_distance(*p, va, vb)
                 };
                 
-                if nearly_equal(dist_sq, min_dist_sq, 5.0) {
-                    if !cp.nearly_equal(contact1, 5.0) {
+                if nearly_equal(dist_sq, min_dist_sq, 0.05) {
+                    if !cp.nearly_equal(contact1, 0.05) {
                         contact2 = cp;
                         contact_count = 2;
                     }

@@ -1,3 +1,6 @@
+use graphics::ellipse::Border;
+
+use crate::game::game_controller::GameController;
 use crate::user_interface::components::*;
 use crate::Vector2f;
 use crate::Game;
@@ -5,6 +8,44 @@ use crate::piston::*;
 use crate::color;
 use crate::graphics::*;
 use crate::Text;
+use crate::opengl_graphics::*;
+use crate::GlyphCache;
+
+trait GameState {
+    fn draw(&self, controller: &GameController, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics);
+
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, controller: &mut GameController) -> bool;
+}
+
+struct Playing {
+    components: Vec<Box<dyn UIComponent>>
+}
+
+impl GameState for Playing {
+    fn draw(&self, controller: &GameController, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+        
+    }   
+
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, controller: &mut GameController) -> bool {
+        true
+    }
+}
+
+struct SettingsMenu {
+    components: Vec<Box<dyn UIComponent>>
+}
+
+struct Inventory {
+    components: Vec<Box<dyn UIComponent>>
+}
+
+struct MainMenu {
+    components: Vec<Box<dyn UIComponent>>
+}
+
+struct PauseMenu {
+    components: Vec<Box<dyn UIComponent>>
+}
 
 pub struct Interfaces {
     pub game: UIMenu,
@@ -25,7 +66,11 @@ pub struct UIMenu {
 }
 
 impl UIComponent for UIMenu {
-    fn draw(&self, glyphs: &mut graphics::glyph_cache::rusttype::GlyphCache<'static, (), opengl_graphics::Texture>, c: graphics::Context, gl: &mut opengl_graphics::GlGraphics) {
+    fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+        let dims = c.get_view_size();
+        let rect = [0.0, 0.0, dims[0], dims[1]];
+        let grayed = [1.0, 1.0, 1.0, 0.5];
+        //graphics::rectangle(grayed, rect, c.transform, gl);       
         for component in self.components.as_slice() {
             component.draw(glyphs, c, gl);
         }
@@ -82,31 +127,33 @@ impl UIMenu {
             button_position, 
             button_size, 
             button_box.clone(), 
-            |btn, game| {
-            if game.enable_launch {
-                btn.display.rect.color = color::RED;
-                game.enable_launch = false;
-            } else {
-                btn.display.rect.color = color::GREEN;
-                game.enable_launch = true;
-            }
-        });
+            |btn, game| { game.enable_launch = !game.enable_launch; },
+            |btn, game| { 
+                btn.display.rect.color = if game.enable_launch { color::GREEN } else { color::RED };
+                btn.display.rect.border = if btn.is_hovered { 
+                    Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border 
+                } else {
+                    Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border
+                }
+            },
+        );
 
         button_position.y += 75.0;
         button_box.string = "Show velocity".to_string();
         let button2 = UIButton::new(
-            button_position,
-            button_size,
+            button_position, 
+            button_size, 
             button_box.clone(), 
-            |btn, game| {
-            if game.settings.view.show_velocites {
-                btn.display.rect.color = color::RED;
-                game.settings.view.show_velocites = false;
-            } else {
-                btn.display.rect.color = color::GREEN;
-                game.settings.view.show_velocites = true;
-            }
-        });
+            |btn, game| { game.settings.view.show_velocites = !game.settings.view.show_velocites; },
+            |btn, game| { 
+                btn.display.rect.color = if game.settings.view.show_velocites { color::GREEN } else { color::RED };
+                btn.display.rect.border = if btn.is_hovered { 
+                    Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border 
+                } else {
+                    Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border
+                }
+            }, 
+        );
 
         button_position.y += 75.0;
         button_box.string = "Show contacts".to_string();
@@ -114,15 +161,16 @@ impl UIMenu {
             button_position, 
             button_size, 
             button_box.clone(), 
-            |btn, game| {
-            if game.settings.view.show_contact_points {
-                btn.display.rect.color = color::RED;
-                game.settings.view.show_contact_points = false;
-            } else {
-                btn.display.rect.color = color::GREEN;
-                game.settings.view.show_contact_points = true;
-            }
-        });
+            |btn, game| { game.settings.view.show_contact_points = !game.settings.view.show_contact_points; },
+            |btn, game| { 
+                btn.display.rect.color = if game.settings.view.show_contact_points { color::GREEN } else { color::RED };
+                btn.display.rect.border = if btn.is_hovered { 
+                    Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border 
+                } else {
+                    Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border
+                }
+            },
+        );
 
         Self { 
             components: vec![
