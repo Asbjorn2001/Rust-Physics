@@ -1,9 +1,11 @@
+use graphics::math::Matrix2d;
+
 use crate::Vector2f;
 use crate::Context;
 use crate::GlGraphics;
 
 pub trait Renderable {
-    fn draw(&self, c: Context, gl: &mut GlGraphics);
+    fn draw(&self, tansform: Matrix2d, gl: &mut GlGraphics);
 }
 
 pub trait Shape : Renderable {

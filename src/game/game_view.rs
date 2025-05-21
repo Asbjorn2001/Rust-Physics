@@ -1,8 +1,5 @@
 use crate::game::game_controller::*;
-use crate::physics::shape::Renderable;
 use crate::graphics::*;
-use crate::user_interface::components::UIComponent;
-use crate::user_interface::interfaces::GameState;
 use crate::GlyphCache;
 use crate::Texture;
 use crate::GlGraphics;

@@ -1,35 +1,23 @@
+use crate::physics::shape::Renderable;
+use crate::physics::shape_type::ShapeType;
 use crate::GlyphCache;
 use crate::Texture;
 use crate::GlGraphics;
 use crate::Game;
-use crate::Border;
 use crate::color;
 use crate::piston::*;
 use crate::graphics::*;
 use crate::Vector2f;
-
-use super::interfaces::GameState;
-
-/* 
-trait StaticComp {
-    
-}
-
-trait DynamicComp {
-    
-}
-
-enum UIComp {
-    Static(Box<dyn StaticComp>),
-    Dynamic(Box<dyn DynamicComp>)
-}
- */
+use crate::game_states::GameState;
 
  pub enum UIEvent {
-     None,
-     Some,
-     StateChange(Box<dyn GameState>),
-     Quit,
+    None,
+    Click,
+    Change,
+    Hover,
+    UnHover,
+    StateChange(Box<dyn GameState>),
+    Quit,
  }
 
 pub trait UIComponent {
@@ -44,17 +32,17 @@ pub struct UISlider2D {
     size: f64,
     pub value: Vector2f<f64>,
     pressed: bool,
-    on_change: fn(Vector2f<f64>, &mut Game),
+    on_update: fn(Vector2f<f64>, UIEvent, &mut Game) -> UIEvent,
 }
 
 impl UISlider2D {
-    pub fn new(position: Vector2f<f64>, size: f64, on_change: fn(Vector2f<f64>, &mut Game)) -> Self {
+    pub fn new(position: Vector2f<f64>, size: f64, on_update: fn(Vector2f<f64>, UIEvent, &mut Game) -> UIEvent) -> Self {
         Self { 
             position, 
             size, 
             value: Vector2f::new(0.0, 0.0), 
             pressed: false, 
-            on_change, 
+            on_update, 
         }
     }
 
@@ -85,7 +73,6 @@ impl UIComponent for UISlider2D {
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             if self.contains_cursor(cursor_pos) {
                 self.pressed = true;
-                return UIEvent::Some;
             }
         } else if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
             self.pressed = false;
@@ -98,37 +85,35 @@ impl UIComponent for UISlider2D {
             if self.value.len() > 1.0 {
                 self.value = self.value.normalize();
             }
-            (self.on_change)(self.value, game);
-            return UIEvent::Some;
+            return (self.on_update)(self.value, UIEvent::Change, game);
         }
 
-        UIEvent::None
+        (self.on_update)(self.value, UIEvent::None, game)
     }
 }
-
 
 pub struct UISlider {
     position: Vector2f<f64>,
     size: Vector2f<f64>,
-    value: f64,
+    pub value: f64,
     color: [f32; 4],
     pressed: bool,
-    on_change: fn(f64, &mut Game),
+    on_update: fn(f64, UIEvent, &mut Game) -> UIEvent,
 }
 
 impl UISlider {
-    pub fn new(position: Vector2f<f64>, size: Vector2f<f64>, color: [f32; 4], on_change: fn(f64, &mut Game)) -> Self {
+    pub fn new(position: Vector2f<f64>, size: Vector2f<f64>, color: [f32; 4], on_update: fn(f64, UIEvent, &mut Game) -> UIEvent) -> Self {
         Self { 
             position, 
             size, 
             value: 0.5, 
             color, 
             pressed: false,
-            on_change,
+            on_update,
         }
     }
 
-    pub fn contains_cursor(&self, cursor_pos: Vector2f<f64>) -> bool {
+    fn contains_cursor(&self, cursor_pos: Vector2f<f64>) -> bool {
         let top_left = self.position;
         let bottom_right = self.position + self.size;
 
@@ -150,12 +135,14 @@ impl UIComponent for UISlider {
         let rect = [0.0, 0.0, self.size.x, self.size.y];
         
         Rectangle::new_round(color::SILVER, 5.0)
-        .border(Border { color: color::BLACK, radius: 1.0 })
+        .border(rectangle::Border { color: color::BLACK, radius: 1.0 })
         .draw(rect, &c.draw_state, transform, gl);
 
         let knob_x = self.value * self.size.x - self.size.y;
         let circle = rectangle::square(knob_x, -self.size.y / 2.0, self.size.y * 2.0);
-        graphics::ellipse(self.color, circle, transform, gl);
+        Ellipse::new(self.color)
+        .border(ellipse::Border { color: color::BLACK, radius: 1.0 })
+        .draw(circle, &c.draw_state, transform, gl);
     }
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
@@ -169,71 +156,39 @@ impl UIComponent for UISlider {
 
         if self.pressed {
             self.value = ((cursor_pos.x - self.position.x) / self.size.x).clamp(0.0, 1.0);
-            (self.on_change)(self.value, game);
-            return UIEvent::Some;
+            return (self.on_update)(self.value, UIEvent::Change, game);
         }
 
-        UIEvent::None
+        (self.on_update)(self.value, UIEvent::None, game)
     }
 }
 
-pub struct UIDisplay {
-    position: Vector2f<f64>,
-    size: Vector2f<f64>,
-    pub text_box: TextBox,
-    on_update: fn(&mut Self, &Game),
-}
-
-impl UIDisplay {
-    pub fn new(position: Vector2f<f64>, size: Vector2f<f64>, text_box: TextBox, on_update: fn(&mut Self, &Game)) -> Self {
-        Self { 
-            position, 
-            size, 
-            text_box, 
-            on_update 
-        }
-    }
-}
-
-impl UIComponent for UIDisplay {
-    fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
-        self.text_box.draw(self.position, self.size, glyphs,  c, gl);
-    }
-
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
-        (self.on_update)(self, &game);   
-        UIEvent::None
-    }
-}
 
 #[derive(Clone)]
 pub struct UIButton {
-    position: Vector2f<f64>,
-    size: Vector2f<f64>,
-    pub display: TextBox,
+    pub position: Vector2f<f64>,
+    pub size: Vector2f<f64>,
+    pub display: Display,
     pub is_hovered: bool,
-    pub on_click: fn(&mut Self, &mut Game) -> UIEvent,
-    pub on_change: fn(&mut Self, &mut Game),
+    pub on_update: fn(&mut Self, UIEvent, &mut Game) -> UIEvent,
 }
 
 impl UIButton {
     pub fn new(
         position: Vector2f<f64>, 
         size: Vector2f<f64>, 
-        display: TextBox, 
-        on_click: fn(&mut Self, &mut Game) -> UIEvent, 
-        on_change: fn(&mut Self, &mut Game)) -> Self {
+        display: Display, 
+        on_update: fn(&mut Self, UIEvent, &mut Game) -> UIEvent) -> Self {
         Self { 
             position,
             size,
             display, 
             is_hovered: false,
-            on_click,
-            on_change,
+            on_update,
         }
     }
 
-    pub fn contains_cursor(&self, cursor_pos: Vector2f<f64>) -> bool {
+    fn contains_cursor(&self, cursor_pos: Vector2f<f64>) -> bool {
         let top_left = self.position;
         let bottom_right = self.position + self.size;
 
@@ -250,53 +205,63 @@ impl UIComponent for UIButton {
     }
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
-        let mut change;
+        let mut event = UIEvent::None;
         if self.contains_cursor(cursor_pos) {
-            change = self.is_hovered != true;
+            if !self.is_hovered { 
+                event = UIEvent::Hover 
+            }
             self.is_hovered = true;
             if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                let event = (self.on_click)(self, game);
-                (self.on_change)(self, game);
-                return event;
+                event = UIEvent::Click;
             }    
         } else {
-            change = self.is_hovered;
+            if self.is_hovered {
+                event = UIEvent::UnHover;
+            }
             self.is_hovered = false;
         }
 
-        if change {
-            (self.on_change)(self, game);
-            return UIEvent::Some;
-        }
-
-        UIEvent::None
+        (self.on_update)(self, event, game)
     }
+}
+
+#[derive(Clone)]
+pub enum DisplayContent {
+    Text((Text, String)),
+    Shape(ShapeType),
 }
 
 // A rectangular box with centered text
 #[derive(Clone)]
-pub struct TextBox {
+pub struct Display {
     pub rect: Rectangle,
-    pub text: Text,
-    pub string: String,
+    pub content: DisplayContent,
 }
 
-impl TextBox {
-    pub fn new(rect: Rectangle, text: Text, string: String) -> Self {
+
+impl Display {
+    pub fn new(rect: Rectangle, content: DisplayContent) -> Self {
         Self { 
             rect,
-            text, 
-            string, 
+            content,
         }
     }
     
-    fn draw(&self, position: Vector2f<f64>, size: Vector2f<f64>, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+    pub fn draw(&self, position: Vector2f<f64>, size: Vector2f<f64>, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         let rect = [0.0, 0.0, size.x, size.y];
         self.rect.draw(rect, &c.draw_state, c.transform.trans_pos(position), gl);
 
-        let text_width = glyphs.width(self.text.font_size, &self.string).unwrap_or(0.0);
-        let text_x = position.x + (size.x - text_width) / 2.0;
-        let text_y = position.y + (size.y + self.text.font_size as f64) / 2.0;
-        self.text.draw(&self.string, glyphs, &c.draw_state, c.transform.trans(text_x, text_y), gl).unwrap();
+        match &self.content {
+            DisplayContent::Text((text, str)) => {
+                let text_width = glyphs.width(text.font_size, &str).unwrap_or(0.0);
+                let text_x = position.x + (size.x - text_width) / 2.0;
+                let text_y = position.y + (size.y + text.font_size as f64) / 2.0;
+                text.draw(&str, glyphs, &c.draw_state, c.transform.trans(text_x, text_y), gl).unwrap();
+            }
+            DisplayContent::Shape(shape) => {
+                let offset = (position + size / 2.0) - shape.get_center();
+                shape.draw(c.transform.trans_pos(offset), gl);
+            } 
+        }        
     }
 }

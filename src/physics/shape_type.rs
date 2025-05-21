@@ -1,3 +1,5 @@
+use graphics::math::Matrix2d;
+
 use crate::Vector2f;
 use crate::physics::shape::Renderable;
 use crate::physics::circle::Circle;
@@ -14,10 +16,10 @@ pub enum ShapeType {
 }
 
 impl Renderable for ShapeType {
-    fn draw(&self, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics) {
         match self {
-            ShapeType::Circle(circle) => circle.draw(c, gl),
-            ShapeType::Polygon(poly) => poly.draw(c, gl),
+            ShapeType::Circle(circle) => circle.draw(transform, gl),
+            ShapeType::Polygon(poly) => poly.draw(transform, gl),
         }
     }
 }
@@ -99,6 +101,16 @@ impl ShapeType {
         match self {
             ShapeType::Circle(c) => c.color = color,
             ShapeType::Polygon(p) => p.color = color,
+        }
+    }
+
+    pub fn scale(&self, ratio: f64) -> Self {
+        match self {
+            ShapeType::Circle(c) => ShapeType::Circle(Circle::new(c.center, c.radius * ratio, c.color)),
+            ShapeType::Polygon(p) => {
+                let verts = p.local_vertices.iter().map(|&v| v * ratio).collect();
+                ShapeType::Polygon(Polygon::new(verts, p.center, p.color))
+            } 
         }
     }
 }

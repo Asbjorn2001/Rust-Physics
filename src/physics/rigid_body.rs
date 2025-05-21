@@ -58,6 +58,21 @@ impl From<Polygon> for RigidBody {
     }
 }
 
+impl From<ShapeType> for RigidBody {
+    fn from(value: ShapeType) -> Self {
+        Self { 
+            linear_velocity: Vector2f::zero(), 
+            angular_velocity: 0.0, 
+            density: 1.0,
+            elasticity: BASE_ELASTICITY, 
+            static_friction: BASE_STATIC_FRICTION,
+            dynamic_friction: BASE_DYNAMIC_FRICTION,
+            is_static: false, 
+            shape: value,
+        }
+    }
+}
+
 impl RigidBody {
     pub fn new(shape: ShapeType, density: f64, elasticity: f64, static_friction: f64, dynamic_friction: f64, is_static: bool) -> Self {
         Self { 

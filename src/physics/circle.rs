@@ -1,6 +1,7 @@
 use std::f64::consts::PI;
 
 use graphics::color;
+use graphics::math::Matrix2d;
 use graphics::Transformed;
 
 use crate::Vector2f;
@@ -18,9 +19,9 @@ pub struct Circle {
 }
 
 impl Renderable for Circle {
-    fn draw(&self, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics) {
         let square = graphics::rectangle::centered_square(0.0, 0.0, self.radius);
-        let transform = c.transform.trans_pos(self.center).rot_rad(self.rotation);
+        let transform = transform.trans_pos(self.center).rot_rad(self.rotation);
 
         graphics::ellipse(self.color, square, transform, gl);
 

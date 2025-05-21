@@ -1,5 +1,7 @@
 use std::f64::consts::PI;
 
+use graphics::math::Matrix2d;
+
 use crate::Vector2f;
 use crate::physics::shape::Renderable;
 use crate::Context;
@@ -15,10 +17,10 @@ pub struct Polygon {
 }
 
 impl Renderable for Polygon {
-    fn draw(&self, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics) {
         let verts: Vec<[f64; 2]> = self.get_vertices().iter().map(|&v| v.into()).collect();
 
-        graphics::polygon(self.color, &verts, c.transform, gl);
+        graphics::polygon(self.color, &verts, transform, gl);
     }
 }
 
