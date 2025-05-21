@@ -15,6 +15,9 @@ use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 use crate::physics::shape_type::ShapeType;
 
+use super::main_menu::MainMenu;
+use super::pause_menu::PauseMenu;
+
 
 pub struct Playing {
     pub components: Vec<Box<dyn UIComponent>>,
@@ -111,7 +114,7 @@ impl GameState for Playing {
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
-                Key::Escape => next_state = Some(Box::new(SettingsMenu::from(&*game))),
+                Key::Escape => next_state = Some(Box::new(PauseMenu::from(&*game))),
                 _ => {}
             }
         }

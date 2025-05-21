@@ -2,6 +2,7 @@ pub mod components;
 pub mod playing;
 pub mod settings;
 pub mod main_menu;
+pub mod pause_menu;
 
 use crate::Vector2f;
 use crate::Game;

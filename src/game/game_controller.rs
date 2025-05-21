@@ -12,7 +12,7 @@ pub struct GameController {
 impl GameController {
     pub fn new(game: Game) -> Self {
         Self { 
-            state: Box::new(playing::Playing::from(&game)),
+            state: Box::new(main_menu::MainMenu::from(&game)),
             game: game, 
             cursor_pos: Vector2f::zero(),
         }
