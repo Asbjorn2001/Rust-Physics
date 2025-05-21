@@ -16,6 +16,7 @@ use crate::game_states::GameState;
     Change,
     Hover,
     UnHover,
+    Custom(String),
     StateChange(Box<dyn GameState>),
     Quit,
  }

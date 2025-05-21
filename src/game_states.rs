@@ -1,6 +1,5 @@
 pub mod components;
 pub mod playing;
-pub mod inventory;
 pub mod settings;
 pub mod main_menu;
 

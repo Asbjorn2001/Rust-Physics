@@ -11,11 +11,15 @@ use crate::GlyphCache;
 use crate::physics::shape::Renderable;
 use crate::game_states::GameState;
 use crate::game_states::settings::SettingsMenu;
-use crate::game_states::inventory::Inventory;
+use crate::physics::circle::Circle;
+use crate::physics::polygon::Polygon;
+use crate::physics::shape_type::ShapeType;
 
 
 pub struct Playing {
     pub components: Vec<Box<dyn UIComponent>>,
+    shape_menu: Vec<Box<dyn UIComponent>>,
+    show_shape_menu: bool,
 }
 
 impl GameState for Playing {
@@ -32,20 +36,44 @@ impl GameState for Playing {
         for component in self.components.as_slice() {
             component.draw(glyphs, c, gl);
         }
+
+        if self.show_shape_menu {
+            for component in self.shape_menu.as_slice() {
+                component.draw(glyphs, c, gl);
+            }
+        }
     }   
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>> {
         let mut interaction = false;
         let mut next_state = None;
         for component in self.components.as_mut_slice() {
+            let event = component.update(cursor_pos, e, game);
+            if !matches!(event, UIEvent::None) {
+                interaction = true;
+            }
             match component.update(cursor_pos, e, game) {
-                UIEvent::None => {},
-                UIEvent::StateChange(state) => { 
-                    next_state = Some(state);
+                UIEvent::Custom(string) => {
+                    if string.as_str() == "shape_menu" { 
+                        self.show_shape_menu = !self.show_shape_menu;
+                    }
+                }
+                UIEvent::StateChange(state) => next_state = Some(state),
+                UIEvent::Quit => std::process::exit(0),
+                _ => {}
+            }
+        }
+
+        if self.show_shape_menu {
+            for component in self.shape_menu.as_mut_slice() {
+                let event = component.update(cursor_pos, e, game);
+                if !matches!(event, UIEvent::None) {
                     interaction = true;
                 }
-                UIEvent::Quit => std::process::exit(0),
-                _ => interaction = true,
+                match event {
+                    UIEvent::Click => self.show_shape_menu = false,
+                    _ => {}
+                }
             }
         }
         
@@ -84,7 +112,6 @@ impl GameState for Playing {
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
                 Key::Escape => next_state = Some(Box::new(SettingsMenu::from(&*game))),
-                Key::E => next_state = Some(Box::new(Inventory::from(&*game))),
                 _ => {}
             }
         }
@@ -99,7 +126,7 @@ impl GameState for Playing {
 
 impl From<&Game> for Playing {
     fn from(value: &Game) -> Self {
-        let mut gravity_slider = UISlider2D::new(Vector2f::new(25.0, 25.0), 200.0, |value, event, game| {
+        let mut gravity_slider = UISlider2D::new(Vector2f::new(25.0, 425.0), 200.0, |value, event, game| {
             match event {
                 UIEvent::Change => game.settings.physics.gravity = value * 500.0,
                 _ => {}
@@ -112,7 +139,7 @@ impl From<&Game> for Playing {
         let text = Text::new(20);
         let text_box = Display::new(rect, DisplayContent::Text((text, "G".to_string())));
         let gravity_display = UIButton::new(
-            Vector2f::new(25.0, 250.0), 
+            Vector2f::new(25.0, 720.0 - 75.0), 
             Vector2f::new(200.0, 50.0), 
             text_box,
             |btn, _, game| {
@@ -123,11 +150,114 @@ impl From<&Game> for Playing {
             } 
         );
 
+        // Shape selection
+        let mut rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
+        rect.color = color::GRAY;
+
+        let shape1 = Circle::new(Vector2f::zero(), 25.0, color::RED);
+        let shape_display = Display::new(rect, DisplayContent::Shape(ShapeType::Circle(shape1)));
+
+        let slot1 = UIButton::new(
+            Vector2f::new(25.0, 125.0), 
+            Vector2f::new(90.0, 90.0), 
+            shape_display, 
+            |btn, event, game| {
+                match event {
+                    UIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
+                    UIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
+                    UIEvent::Click => {
+                        if let DisplayContent::Shape(s) = &btn.display.content {
+                            game.projectile = s.clone();
+                        }
+                        return UIEvent::Click;
+                    }
+                    _ => {}
+                }
+                event
+            }, 
+        );
+
+        let mut slot2 = slot1.clone();
+        slot2.position.x += 100.0;
+        let shape2 = Polygon::new_rectangle(Vector2f::zero(), 55.0, 25.0, color::NAVY);
+        slot2.display.content = DisplayContent::Shape(ShapeType::Polygon(shape2));
+
+        let mut slot3 = slot2.clone();
+        slot3.position.x += 100.0;
+        let verts = vec![
+            Vector2f::new(-20.0, 20.0),
+            Vector2f::new(-20.0, 0.0),
+            Vector2f::new(0.0, -20.0),
+            Vector2f::new(20.0, 0.0),
+            Vector2f::new(20.0, 20.0) 
+        ];
+        let shape3 = Polygon::new(
+            verts,
+            Vector2f::zero(), 
+            color::PURPLE
+        );
+        slot3.display.content = DisplayContent::Shape(ShapeType::Polygon(shape3));
+
+        let mut slot4 = slot3.clone();
+        slot4.position.x += 100.0;
+        let verts = vec![
+            Vector2f::new(0.0, -28.0),
+            Vector2f::new(15.0, 0.0),
+            Vector2f::new(0.0, 28.0),
+            Vector2f::new(-15.0, 0.0) 
+        ];
+        let shape4 = Polygon::new(
+            verts,
+            Vector2f::zero(), 
+            color::GREEN
+        );
+        slot4.display.content = DisplayContent::Shape(ShapeType::Polygon(shape4));
+
+        let rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
+        let shape_display = UIButton::new(
+            Vector2f::new(25.0, 25.0), 
+            Vector2f::new(90.0, 90.0), 
+            Display::new(rect, DisplayContent::Shape(value.projectile.scale(value.projectile_scale))), 
+            |btn, event, game| {
+                match event {
+                    UIEvent::Click => return UIEvent::Custom("shape_menu".to_string()),
+                    UIEvent::Hover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 2.0).border },
+                    UIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
+                    _ => { btn.display.content = DisplayContent::Shape(game.projectile.scale(game.projectile_scale)) },
+                }
+                event
+            }
+        );
+
+        let mut scale = UISlider::new(
+            Vector2f::new(150.0, 60.0), 
+            Vector2f::new(200.0, 20.0), 
+            color::RED, 
+            |value, event, game| {
+                match event {
+                    UIEvent::Change => game.projectile_scale = (value + 0.25) * 4.0 / 3.0,
+                    _ => {} 
+                }
+                event
+            }
+        );
+        scale.value = (value.projectile_scale * 3.0 / 4.0) - 0.25;
+
         Self { 
             components: vec![
                 Box::new(gravity_slider),
-                Box::new(gravity_display)
+                Box::new(gravity_display),
+                Box::new(scale),
+                Box::new(shape_display),
             ],
+
+            shape_menu: vec![
+                Box::new(slot1),
+                Box::new(slot2),
+                Box::new(slot3),
+                Box::new(slot4),
+            ],
+            show_shape_menu: false,
         }   
     }
 }
