@@ -23,3 +23,8 @@ multiplayer game of 2 teams / 2 player game
 **Tower build / defense**
 - Who builds the tallest and most stable towers? 
 - A timer runs whil you build, then you get to destroy each others towers afterwards.
+
+**Two player angry birds**
+both sides builds to protect their birds, then shoots at each others buildings
+
+**Fighting game where objects are throwable and everything is physical**

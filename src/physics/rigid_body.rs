@@ -146,7 +146,6 @@ impl RigidBody {
         let b_inv_mass = if b.is_static { 0.0 } else { 1.0 / (b.shape.area() * b.density) };
         let b_inv_inertia = if b.is_static { 0.0 } else { 1.0 / (b.shape.momemnt_of_inertia() * b.density) };
 
-        println!("a mass: {}, b mass: {}", 1.0 / a_inv_mass, 1.0 / b_inv_mass);
         let elasticity = a.elasticity.min(b.elasticity);
 
         let sf = (a.static_friction + b.static_friction) / 2.0;

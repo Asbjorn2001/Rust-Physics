@@ -19,7 +19,7 @@ use physics::rigid_body::{RigidBody, BASE_DYNAMIC_FRICTION, BASE_ELASTICITY, BAS
 use user_interface::components::*;
 use glutin_window::GlutinWindow as Window;
 use graphics::*;
-use kira::{AudioManager, AudioManagerSettings, DefaultBackend};
+use kira::{AudioManager, AudioManagerSettings, DefaultBackend, PlaySoundError};
 use opengl_graphics::{GlGraphics, OpenGL, Texture};
 use piston::event_loop::{EventSettings, Events};
 use piston::input::*;
@@ -29,6 +29,7 @@ use glyph_cache::rusttype::GlyphCache;
 use game::*;
 use game::game_controller::*;
 use game::game_view::*;
+use user_interface::interfaces::*;
 
 static FONT: &str = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
 
@@ -104,7 +105,6 @@ fn main() {
 
     let game = Game {
         settings: GameSettings::default(),
-        enable_launch: true,
         bodies: vec![floor, ramp1, ramp2],
         target: None,
         projectile: player_body,

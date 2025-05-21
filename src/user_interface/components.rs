@@ -8,6 +8,8 @@ use crate::piston::*;
 use crate::graphics::*;
 use crate::Vector2f;
 
+use super::interfaces::GameState;
+
 /* 
 trait StaticComp {
     
@@ -23,17 +25,24 @@ enum UIComp {
 }
  */
 
+ pub enum UIEvent {
+     None,
+     Some,
+     StateChange(Box<dyn GameState>),
+     Quit,
+ }
+
 pub trait UIComponent {
     fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics);
 
     // Returns true if the component was interacted with
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> bool;
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent;
 }
 
 pub struct UISlider2D {
     position: Vector2f<f64>,
     size: f64,
-    value: Vector2f<f64>,
+    pub value: Vector2f<f64>,
     pressed: bool,
     on_change: fn(Vector2f<f64>, &mut Game),
 }
@@ -72,11 +81,11 @@ impl UIComponent for UISlider2D {
         border.draw(rect, &c.draw_state, transform, gl);
     }
 
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> bool {
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             if self.contains_cursor(cursor_pos) {
                 self.pressed = true;
-                return true;
+                return UIEvent::Some;
             }
         } else if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
             self.pressed = false;
@@ -90,10 +99,10 @@ impl UIComponent for UISlider2D {
                 self.value = self.value.normalize();
             }
             (self.on_change)(self.value, game);
-            return true;
+            return UIEvent::Some;
         }
 
-        false
+        UIEvent::None
     }
 }
 
@@ -136,7 +145,7 @@ impl UISlider {
 }
 
 impl UIComponent for UISlider {
-        fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         let transform = c.transform.trans_pos(self.position);
         let rect = [0.0, 0.0, self.size.x, self.size.y];
         
@@ -149,7 +158,7 @@ impl UIComponent for UISlider {
         graphics::ellipse(self.color, circle, transform, gl);
     }
 
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> bool {
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             if self.contains_cursor(cursor_pos) {
                 self.pressed = true;
@@ -161,10 +170,10 @@ impl UIComponent for UISlider {
         if self.pressed {
             self.value = ((cursor_pos.x - self.position.x) / self.size.x).clamp(0.0, 1.0);
             (self.on_change)(self.value, game);
-            return true;
+            return UIEvent::Some;
         }
 
-        false
+        UIEvent::None
     }
 }
 
@@ -191,9 +200,9 @@ impl UIComponent for UIDisplay {
         self.text_box.draw(self.position, self.size, glyphs,  c, gl);
     }
 
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> bool {
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
         (self.on_update)(self, &game);   
-        false
+        UIEvent::None
     }
 }
 
@@ -203,8 +212,8 @@ pub struct UIButton {
     size: Vector2f<f64>,
     pub display: TextBox,
     pub is_hovered: bool,
-    on_click: fn(&mut Self, &mut Game),
-    on_change: fn(&mut Self, &mut Game),
+    pub on_click: fn(&mut Self, &mut Game) -> UIEvent,
+    pub on_change: fn(&mut Self, &mut Game),
 }
 
 impl UIButton {
@@ -212,7 +221,7 @@ impl UIButton {
         position: Vector2f<f64>, 
         size: Vector2f<f64>, 
         display: TextBox, 
-        on_click: fn(&mut Self, &mut Game), 
+        on_click: fn(&mut Self, &mut Game) -> UIEvent, 
         on_change: fn(&mut Self, &mut Game)) -> Self {
         Self { 
             position,
@@ -240,14 +249,15 @@ impl UIComponent for UIButton {
         self.display.draw(self.position, self.size, glyphs, c, gl);
     }
 
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> bool {
+    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent {
         let mut change;
         if self.contains_cursor(cursor_pos) {
-            change = self.is_hovered == false;
+            change = self.is_hovered != true;
             self.is_hovered = true;
             if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                (self.on_click)(self, game);
-                change = true;
+                let event = (self.on_click)(self, game);
+                (self.on_change)(self, game);
+                return event;
             }    
         } else {
             change = self.is_hovered;
@@ -256,9 +266,10 @@ impl UIComponent for UIButton {
 
         if change {
             (self.on_change)(self, game);
+            return UIEvent::Some;
         }
 
-        change
+        UIEvent::None
     }
 }
 
