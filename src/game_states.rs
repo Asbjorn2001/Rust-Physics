@@ -5,11 +5,12 @@ pub mod main_menu;
 pub mod pause_menu;
 
 use crate::Vector2f;
-use crate::Game;
-use crate::piston::*;
-use crate::graphics::*;
-use crate::opengl_graphics::*;
-use crate::GlyphCache;
+use crate::game::*;
+use crate::glyph_cache::rusttype::GlyphCache;
+use crate::Texture;
+use crate::GlGraphics;
+use crate::Context;
+use piston_window::Event;
 
 pub trait GameState {
     fn draw(&self, game: &Game, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics);

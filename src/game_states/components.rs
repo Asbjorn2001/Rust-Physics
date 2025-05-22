@@ -3,12 +3,12 @@ use crate::physics::shape_type::ShapeType;
 use crate::GlyphCache;
 use crate::Texture;
 use crate::GlGraphics;
-use crate::Game;
 use crate::color;
-use crate::piston::*;
-use crate::graphics::*;
 use crate::Vector2f;
 use crate::game_states::GameState;
+use crate::CharacterCache;
+use piston_window::*;
+use crate::game::Game;
 
  pub enum UIEvent {
     None,
@@ -24,7 +24,6 @@ use crate::game_states::GameState;
 pub trait UIComponent {
     fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics);
 
-    // Returns true if the component was interacted with
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> UIEvent;
 }
 

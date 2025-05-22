@@ -4,7 +4,6 @@ use graphics::math::Matrix2d;
 
 use crate::Vector2f;
 use crate::physics::shape::Renderable;
-use crate::Context;
 use crate::GlGraphics;
 use crate::physics::shape::Shape;
 
@@ -143,7 +142,26 @@ impl Polygon {
                 distance = len;
             }
         }
+
         closest_vertex
+    }
+
+    pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
+        let verts = self.get_vertices();
+        let mut closest_point = Vector2f::zero();
+        let mut distance = f64::INFINITY;
+        for i in 0..verts.len() {
+            let a = verts[i];
+            let b = verts[(i + 1) % verts.len()];
+
+            let (dist, cp) = super::collision::point_segment_distance(point, a, b);
+            if dist < distance {
+                closest_point = cp;
+                distance = dist;
+            }
+        }
+
+        closest_point
     }
 
     pub fn compute_center(vertices: &Vec<Vector2f<f64>>) -> Vector2f<f64> {
@@ -161,6 +179,7 @@ impl Polygon {
             sum_center += curr * weight;
             sum_weight += weight;
         }
+        
         sum_center / sum_weight
     }
 }

@@ -1,7 +1,7 @@
 use crate::game::Game;
 use crate::game_states::*;
 use crate::Vector2f;
-use crate::piston::*;
+use piston_window::*;
 
 pub struct GameController {
     pub game: Game,

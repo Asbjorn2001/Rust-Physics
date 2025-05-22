@@ -1,7 +1,6 @@
 use graphics::math::Matrix2d;
 
 use crate::Vector2f;
-use crate::Context;
 use crate::GlGraphics;
 
 pub trait Renderable {

@@ -5,8 +5,10 @@ use crate::Vector2f;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 
+use super::shape::Shape;
+
 // Returns distance squared and cp
-fn point_segment_distance(p: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f64>) -> (f64, Vector2f<f64>) {
+pub fn point_segment_distance(p: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f64>) -> (f64, Vector2f<f64>) {
     let ab = b - a;
     let ap = p - a;
 
@@ -101,6 +103,9 @@ pub struct CollisionData(pub f64, pub Vector2f<f64>);
 
 pub fn collision_circle_circle(a: &Circle, b: &Circle) -> Option<CollisionData> {
     let delta_dist = b.center - a.center;
+    if delta_dist.len() == 0.0 {
+        return None;
+    }
     let sum_radius = a.radius + b.radius;
     let sep = delta_dist.len() - sum_radius;
     if sep < 0.0 {
@@ -155,6 +160,8 @@ pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
 pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
     let mut result = CollisionData(f64::NEG_INFINITY, Vector2f::new(0.0, 0.0));
     let poly_verts = p.get_vertices();
+    let mut closest_point = Vector2f::zero();
+    let mut distance = f64::INFINITY;
     for i in 0..poly_verts.len() {
         let a = poly_verts[i];
         let b = poly_verts[(i + 1) % poly_verts.len()];
@@ -168,6 +175,22 @@ pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
         if sep > result.0 {
             result = CollisionData(sep, normal);
         }
+
+        let (dist, cp) = point_segment_distance(c.center, a, b);
+        if dist < distance {
+            closest_point = cp;
+            distance = dist;
+        }
+    }
+
+    let normal = (c.center - closest_point).normalize();
+    let sep = (c.center - closest_point).dot(normal) - c.radius;
+    if sep > 0.0 {
+        return None
+    }
+
+    if sep > result.0 {
+        result = CollisionData(sep, normal);
     }
 
     Some(result)

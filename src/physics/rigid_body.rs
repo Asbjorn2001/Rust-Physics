@@ -1,5 +1,4 @@
 use core::f64;
-
 use crate::Vector2f;
 use crate::game::PhysicsSettings;
 use crate::physics::shape_type::ShapeType;
@@ -104,11 +103,13 @@ impl RigidBody {
     pub fn collide_with(&mut self, other: &mut RigidBody) -> Option<CollisionData> {
         let push_out = 
         |data: CollisionData, a: &mut RigidBody, b: &mut RigidBody| -> Option<CollisionData> {
-            let CollisionData(sep, normal) = data;
+            let CollisionData(mut sep, normal) = data;    
+            sep -= f64::EPSILON;
             match (a.is_static, b.is_static) {
                 (true, true) | (false, false) => {
                     a.shape.translate(normal * sep / 2.0);
                     b.shape.translate(normal * -sep / 2.0);
+                    
                 }
                 (true, false) => b.shape.translate(normal * -sep),
                 (false, true) => a.shape.translate(normal * sep),
@@ -116,20 +117,29 @@ impl RigidBody {
             Some(data)
         };
 
-        match (&self.shape, &other.shape) {
+        let push_poly_circle = |p: &mut Polygon, c: &mut Circle| {
+            if p.contains_point(c.center) {
+                let cp = p.find_closest_point(c.center);
+                c.center = cp + (cp - c.center).normalize() * (c.radius + f64::EPSILON);
+            }
+        };
+
+        match (&mut self.shape, &mut other.shape) {
             (ShapeType::Circle(a), ShapeType::Circle(b)) => {
                 if let Some(collision) = collision_circle_circle(a, b) {
                     return push_out(collision, self, other);
                 } 
             },
-            (ShapeType::Circle(a), ShapeType::Polygon(b)) => {
-                if let Some(mut collision) = collision_poly_circle(b, a) {
+            (ShapeType::Circle(c), ShapeType::Polygon(p)) => {
+                push_poly_circle(p, c);
+                if let Some(mut collision) = collision_poly_circle(p, c) {
                     collision.1 = -collision.1;
                     return push_out(collision, self, other);
                 }
             }
-            (ShapeType::Polygon(a), ShapeType::Circle(b)) => {
-                if let Some(collision) = collision_poly_circle(a, b) {
+            (ShapeType::Polygon(p), ShapeType::Circle(c)) => {
+                push_poly_circle(p, c);
+                if let Some(collision) = collision_poly_circle(p, c) {
                     return push_out(collision, self, other);
                 }
             }
@@ -179,9 +189,10 @@ impl RigidBody {
             }
 
             let v_rel = -(1.0 + elasticity) * relative_velocity.dot(normal);
-            let denom = a_inv_mass + b_inv_mass + 
+            let mut denom = a_inv_mass + b_inv_mass + 
                 f64::powi(ra.cross(normal), 2) * a_inv_inertia + 
                 f64::powi(rb.cross(normal), 2) * b_inv_inertia;
+            denom = denom.max(f64::EPSILON);
 
             let j = v_rel / denom;
             let a_impulse = normal * j;
@@ -205,9 +216,10 @@ impl RigidBody {
             tangent = tangent.normalize();
 
             let v_rel = -relative_velocity.dot(tangent);
-            let denom = a_inv_mass + b_inv_mass +
+            let mut denom = a_inv_mass + b_inv_mass +
                 f64::powi(ra.cross(tangent), 2) * a_inv_inertia + 
                 f64::powi(rb.cross(tangent), 2) * b_inv_inertia;
+            denom = denom.max(f64::EPSILON);
 
             let mut jt = v_rel / denom;
             if jt.abs() > -j * sf {

@@ -1,16 +1,19 @@
 use crate::game_states::components::*;
 use crate::Vector2f;
-use crate::Game;
-use crate::piston::*;
-use crate::graphics::*;
-use crate::opengl_graphics::*;
 use crate::GlyphCache;
 use crate::game_states::GameState;
 use crate::game_states::*;
+use crate::Texture;
+use piston_window::*;
+
+use super::playing::Playing;
+use super::settings::SettingsMenu;
 
 
 pub struct PauseMenu {
-    components: Vec<Box<dyn UIComponent>>
+    components: Vec<Box<dyn UIComponent>>,
+    settings_menu: SettingsMenu,
+    open_settings: bool,
 }
 
 impl GameState for PauseMenu {
@@ -22,20 +25,41 @@ impl GameState for PauseMenu {
         let gray = [1.0, 1.0, 1.0, 0.5];
         graphics::rectangle(gray, rect, c.transform, gl); 
 
-        for component in self.components.as_slice() {
-            component.draw(glyphs, c, gl);
+        if self.open_settings {
+            self.settings_menu.draw(game, glyphs, c, gl);
+        } else {
+            for component in self.components.as_slice() {
+                component.draw(glyphs, c, gl);
+            }
         }
     }
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>>{
         let mut next_state = None;
-        for component in self.components.as_mut_slice() {
-            match component.update(cursor_pos, e, game) {
-                UIEvent::StateChange(state) => next_state = Some(state),
-                _ => {},
+        if self.open_settings {
+            next_state = self.settings_menu.update(cursor_pos, e, game);
+        } else {
+            for component in self.components.as_mut_slice() {
+                match component.update(cursor_pos, e, game) {
+                    UIEvent::StateChange(state) => next_state = Some(state),
+                    UIEvent::Custom(event) => {
+                        if event.as_str() == "open_settings" {
+                            self.open_settings = true;
+                        }
+                    },
+                    _ => {},
+                }
             }
         }
 
+        if let Some(Button::Keyboard(Key::Escape)) = e.press_args() {
+            if self.open_settings {
+                self.open_settings = false;
+            } else {
+                next_state = Some(Box::new(Playing::from(&*game)));
+            } 
+        }
+        
         next_state
     }
 }
@@ -71,7 +95,7 @@ impl From<&Game> for PauseMenu {
             display,
             |btn, event, game| { 
                 match event {
-                    UIEvent::Click => return UIEvent::StateChange(Box::new(settings::SettingsMenu::from(&*game))),
+                    UIEvent::Click => return UIEvent::Custom("open_settings".to_string()),
                     UIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
                     UIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
                     _ => {}
@@ -103,7 +127,9 @@ impl From<&Game> for PauseMenu {
                 Box::new(button1),
                 Box::new(button2),
                 Box::new(button3),
-            ] 
+            ],
+            settings_menu: SettingsMenu::from(value),
+            open_settings: false,
         }      
     }
 }

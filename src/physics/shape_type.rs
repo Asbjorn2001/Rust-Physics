@@ -4,8 +4,6 @@ use crate::Vector2f;
 use crate::physics::shape::Renderable;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
-use crate::clone::Clone;
-use crate::Context;
 use crate::GlGraphics;
 use crate::physics::shape::Shape;
 

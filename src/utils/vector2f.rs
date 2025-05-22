@@ -1,5 +1,4 @@
 use num_traits::*;
-use core::str;
 use std::ops::*;
 use rand::Rng;
 

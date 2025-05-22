@@ -12,12 +12,12 @@ use crate::physics::collision::CollisionData;
 use crate::GlGraphics;
 use crate::GlyphCache;
 use crate::Texture;
-use crate::Circle;
-use crate::Polygon;
-use crate::graphics::*;
+use crate::physics::circle::Circle;
+use crate::physics::polygon::Polygon;
 use crate::physics::shape::Renderable;
 use crate::color;
 use crate::physics::rigid_body::*;
+use crate::Context;
 
 
 const PHYSICS_ITERATIONS: usize = 10;
@@ -77,15 +77,15 @@ impl Default for Game {
         // Create bodies
         let floor_shape = ShapeType::Polygon(Polygon::new_rectangle(
             Vector2f::new(640.0, 650.0), 
-            800.0, 
+            1000.0, 
             50.0, 
             color::OLIVE
         ));
         let floor = RigidBody::new(floor_shape, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
 
         let mut ramp_shape1 = ShapeType::Polygon(Polygon::new_rectangle(
-            Vector2f::new(450.0, 400.0), 
-            400.0, 
+            Vector2f::new(450.0, 300.0), 
+            400.0,
             25.0, 
             color::TEAL
         ));
@@ -93,15 +93,25 @@ impl Default for Game {
 
         ramp_shape1.rotate(0.5);
 
-        ramp_shape2.translate(Vector2f::new(400.0, -200.0));
+        ramp_shape2.translate(Vector2f::new(400.0, -150.0));
         ramp_shape2.rotate(-0.5);
         ramp_shape2.set_color(color::MAROON);
+
+        let triangle = RigidBody::new(
+            ShapeType::Polygon(
+                Polygon::new_regular_polygon(3, 60.0, Vector2f::new(800.0, 595.0), color::GREEN)),
+            1.0,
+            BASE_ELASTICITY,
+            BASE_STATIC_FRICTION,
+            BASE_DYNAMIC_FRICTION,
+            true,
+        );
 
         let ramp1 = RigidBody::new(ramp_shape1, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true); 
         let ramp2 = RigidBody::new(ramp_shape2, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
         Self { 
             settings: GameSettings::default(), 
-            bodies: vec![floor, ramp1, ramp2], 
+            bodies: vec![floor, ramp1, ramp2, triangle], 
             target: None, 
             projectile: ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::RED)), 
             projectile_scale: 1.0, 

@@ -1,8 +1,8 @@
 use crate::game::game_controller::*;
-use crate::graphics::*;
 use crate::GlyphCache;
 use crate::Texture;
 use crate::GlGraphics;
+use crate::Context;
 
 pub struct GameViewSettings {
 

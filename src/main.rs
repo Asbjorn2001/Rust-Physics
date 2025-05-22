@@ -10,11 +10,8 @@ mod utils;
 mod physics;
 mod game_states;
 
-use graphics::rectangle::Border;
-use physics::circle::Circle;
 use piston_window::{Filter, TextureSettings};
 use utils::vector2f::Vector2f;
-use physics::polygon::Polygon;
 use glutin_window::GlutinWindow as Window;
 use graphics::*;
 use kira::{AudioManager, AudioManagerSettings, DefaultBackend, PlaySoundError};

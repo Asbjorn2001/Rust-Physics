@@ -1,20 +1,17 @@
 use crate::game_states::components::*;
 use crate::Vector2f;
-use crate::Game;
-use crate::piston::*;
 use crate::color;
-use crate::graphics::*;
 use crate::Text;
-use crate::opengl_graphics::*;
 use crate::GlyphCache;
 use crate::game_states::GameState;
-use crate::game_states::playing::Playing;
-
-use super::main_menu::MainMenu;
+use crate::*;
+use crate::game::Game;
+use crate::Texture;
+use piston_window::*;
 
 
 pub struct SettingsMenu {
-    components: Vec<Box<dyn UIComponent>>
+    components: Vec<Box<dyn UIComponent>>,
 }
 
 impl GameState for SettingsMenu {
@@ -31,10 +28,6 @@ impl GameState for SettingsMenu {
                 UIEvent::StateChange(state) => next_state = Some(state),
                 _ => {}
             }
-        }
-
-        if let Some(Button::Keyboard(Key::Escape)) = e.press_args() {
-            next_state = Some(Box::new(MainMenu::from(&*game)));
         }
 
         next_state

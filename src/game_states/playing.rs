@@ -1,23 +1,19 @@
 use crate::physics::rigid_body::RigidBody;
 use crate::game_states::components::*;
 use crate::Vector2f;
-use crate::Game;
-use crate::piston::*;
 use crate::color;
-use crate::graphics::*;
 use crate::Text;
-use crate::opengl_graphics::*;
 use crate::GlyphCache;
 use crate::physics::shape::Renderable;
 use crate::game_states::GameState;
-use crate::game_states::settings::SettingsMenu;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 use crate::physics::shape_type::ShapeType;
-
-use super::main_menu::MainMenu;
 use super::pause_menu::PauseMenu;
-
+use crate::Texture;
+use piston_window::*;
+use crate::game::Game;
+use crate::GlGraphics;
 
 pub struct Playing {
     pub components: Vec<Box<dyn UIComponent>>,

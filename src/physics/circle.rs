@@ -6,7 +6,6 @@ use graphics::Transformed;
 
 use crate::Vector2f;
 use crate::physics::shape::Renderable;
-use crate::Context;
 use crate::GlGraphics;
 use crate::physics::shape::Shape;
 
