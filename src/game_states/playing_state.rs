@@ -9,21 +9,29 @@ use crate::game_states::GameState;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 use crate::physics::shape_type::ShapeType;
-use super::pause_menu::PauseMenu;
+use super::pause_state::PauseState;
 use crate::Texture;
 use piston_window::*;
 use crate::game::Game;
 use crate::GlGraphics;
+use super::gui::GUI;
 
-pub struct Playing {
-    pub components: Vec<Box<dyn UIComponent>>,
-    shape_menu: Vec<Box<dyn UIComponent>>,
+pub struct PlayingState {
+    pub gui: GUI,
+    shape_menu: GUI,
     show_shape_menu: bool,
 }
 
-impl GameState for Playing {
+impl GameState for PlayingState {
     fn draw(&self, game: &Game, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         game.draw(glyphs, c, gl);
+        
+        self.gui.draw(glyphs, c, gl);
+        
+        if self.show_shape_menu {
+            self.shape_menu.draw(glyphs, c, gl);
+        }
+
         if let Some(target) = game.target {
             if game.settings.enable_launch {
                 let projectile_pos = game.projectile.get_center();
@@ -32,21 +40,12 @@ impl GameState for Playing {
                 game.projectile.scale(game.projectile_scale).draw(c.transform, gl);
             }
         }
-        for component in self.components.as_slice() {
-            component.draw(glyphs, c, gl);
-        }
-
-        if self.show_shape_menu {
-            for component in self.shape_menu.as_slice() {
-                component.draw(glyphs, c, gl);
-            }
-        }
     }   
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>> {
         let mut interaction = false;
         let mut next_state = None;
-        for component in self.components.as_mut_slice() {
+        for component in self.gui.components.as_mut_slice() {
             let event = component.update(cursor_pos, e, game);
             if !matches!(event, UIEvent::None) {
                 interaction = true;
@@ -64,7 +63,7 @@ impl GameState for Playing {
         }
 
         if self.show_shape_menu {
-            for component in self.shape_menu.as_mut_slice() {
+            for component in self.shape_menu.components.as_mut_slice() {
                 let event = component.update(cursor_pos, e, game);
                 if !matches!(event, UIEvent::None) {
                     interaction = true;
@@ -110,7 +109,7 @@ impl GameState for Playing {
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
-                Key::Escape => next_state = Some(Box::new(PauseMenu::from(&*game))),
+                Key::Escape => next_state = Some(Box::new(PauseState::from(&*game))),
                 _ => {}
             }
         }
@@ -123,7 +122,7 @@ impl GameState for Playing {
     }
 }
 
-impl From<&Game> for Playing {
+impl From<&Game> for PlayingState {
     fn from(value: &Game) -> Self {
         let mut gravity_slider = UISlider2D::new(Vector2f::new(25.0, 425.0), 200.0, |value, event, game| {
             match event {
@@ -243,19 +242,8 @@ impl From<&Game> for Playing {
         scale.value = (value.projectile_scale * 3.0 / 4.0) - 0.25;
 
         Self { 
-            components: vec![
-                Box::new(gravity_slider),
-                Box::new(gravity_display),
-                Box::new(scale),
-                Box::new(shape_display),
-            ],
-
-            shape_menu: vec![
-                Box::new(slot1),
-                Box::new(slot2),
-                Box::new(slot3),
-                Box::new(slot4),
-            ],
+            gui: GUI { components: vec![Box::new(gravity_slider), Box::new(gravity_display), Box::new(scale), Box::new(shape_display)] }, 
+            shape_menu: GUI { components: vec![Box::new(slot1), Box::new(slot2), Box::new(slot3), Box::new(slot4)] }, 
             show_shape_menu: false,
         }   
     }

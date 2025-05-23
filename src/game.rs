@@ -46,8 +46,8 @@ pub struct ViewSettings {
 impl Default for ViewSettings {
     fn default() -> Self {
         Self { 
-            show_velocites: true, 
-            show_contact_points: true 
+            show_velocites: false, 
+            show_contact_points: false, 
         }
     }
 }
@@ -59,7 +59,7 @@ pub struct PhysicsSettings {
 
 impl Default for PhysicsSettings {
     fn default() -> Self {
-        PhysicsSettings { gravity: Vector2f { x: 0.0, y: 100.0 }, air_density: 0.08 }
+        PhysicsSettings { gravity: Vector2f { x: 0.0, y: 250.0 }, air_density: 0.08 }
     }
 }
 

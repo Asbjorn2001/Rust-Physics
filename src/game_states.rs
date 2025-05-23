@@ -1,8 +1,8 @@
 pub mod components;
-pub mod playing;
-pub mod settings;
-pub mod main_menu;
-pub mod pause_menu;
+pub mod playing_state;
+pub mod main_state;
+pub mod pause_state;
+pub mod gui;
 
 use crate::Vector2f;
 use crate::game::*;
@@ -17,3 +17,4 @@ pub trait GameState {
 
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>>;
 }
+

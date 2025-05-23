@@ -16,10 +16,10 @@ use crate::game::Game;
     Change,
     Hover,
     UnHover,
-    Custom(String),
     StateChange(Box<dyn GameState>),
+    Custom(String),
     Quit,
- }
+}
 
 pub trait UIComponent {
     fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics);
