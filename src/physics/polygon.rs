@@ -1,5 +1,4 @@
 use std::f64::consts::PI;
-
 use graphics::math::Matrix2d;
 
 use crate::Vector2f;
@@ -17,7 +16,7 @@ pub struct Polygon {
 
 impl Renderable for Polygon {
     fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics) {
-        let verts: Vec<[f64; 2]> = self.get_vertices().iter().map(|&v| v.into()).collect();
+        let verts: Vec<[f64; 2]> = self.get_transformed_vertices().iter().map(|&v| v.into()).collect();
 
         graphics::polygon(self.color, &verts, transform, gl);
     }
@@ -52,7 +51,7 @@ impl Shape for Polygon {
         let mut pos = 0;
         let mut neg = 0;
 
-        let verts = self.get_vertices();
+        let verts = self.get_transformed_vertices();
         for i in 0..verts.len() {
             let v1 = verts[i];
             let v2 = verts[(i + 1) % verts.len()];
@@ -94,7 +93,7 @@ impl Polygon {
         Self::new_rectangle(position, size, size, color)
     }
 
-    pub fn new_regular_polygon(n_sides: u8, radius: f64, center: Vector2f<f64>, color: [f32; 4]) -> Self {
+    pub fn new_regular_polygon(n_sides: u32, radius: f64, center: Vector2f<f64>, color: [f32; 4]) -> Self {
         let mut angle = PI * 270.0 / 180.0; // Starting at 270 degrees
         let angle_increment = (2.0 * PI) / n_sides as f64;
         if n_sides % 2 == 0 { angle += angle_increment / 2.0; }
@@ -126,12 +125,12 @@ impl Polygon {
         }
     }
 
-    pub fn get_vertices(&self) -> Vec<Vector2f<f64>> {
+    pub fn get_transformed_vertices(&self) -> Vec<Vector2f<f64>> {
         self.local_vertices.iter().map(|v| v.rotate(self.rotation) + self.center).collect()
     }
 
     pub fn closest_vertex_to(&self, point: Vector2f<f64>) -> Vector2f<f64> {
-        let vertices = self.get_vertices();
+        let vertices = self.get_transformed_vertices();
         let mut closest_vertex = vertices[0];
         let mut distance = f64::INFINITY;
         for i in 0..vertices.len() {
@@ -147,7 +146,7 @@ impl Polygon {
     }
 
     pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
-        let verts = self.get_vertices();
+        let verts = self.get_transformed_vertices();
         let mut closest_point = Vector2f::zero();
         let mut distance = f64::INFINITY;
         for i in 0..verts.len() {

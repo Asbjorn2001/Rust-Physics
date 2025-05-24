@@ -8,7 +8,9 @@ extern crate piston_window;
 mod game;
 mod utils;
 mod physics;
-mod game_states;
+mod game_state;
+
+use std::path::Path;
 
 use piston_window::{Filter, TextureSettings};
 use utils::vector2f::Vector2f;
@@ -19,7 +21,6 @@ use opengl_graphics::{GlGraphics, OpenGL, Texture};
 use piston::event_loop::{EventSettings, Events};
 use piston::input::*;
 use piston::window::WindowSettings;
-use std::{clone, vec};
 use glyph_cache::rusttype::GlyphCache;
 use game::*;
 use game::game_controller::*;
@@ -61,7 +62,7 @@ fn main() {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 graphics::clear(color::WHITE, g);
-
+                
                 game_view.draw(&game_controller, &mut glyphs, c, g);
             });
         }

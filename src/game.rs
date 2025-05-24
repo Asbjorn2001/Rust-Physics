@@ -1,9 +1,16 @@
 pub mod game_controller;
 pub mod game_view;
 
+use std::collections::HashMap;
+use std::path::Path;
+use std::rc::Rc;
+
 use piston::UpdateArgs;
+use piston_window::TextureSettings;
+use rand::distr::Map;
 use rand::seq::SliceRandom;
 
+use crate::physics::material::*;
 use crate::physics::shape_type::ShapeType;
 use crate::physics::rigid_body::RigidBody;
 use crate::Vector2f;
@@ -67,9 +74,10 @@ pub struct Game {
     pub settings: GameSettings,
     pub bodies: Vec<RigidBody>,
     pub target: Option<Vector2f<f64>>,
-    pub projectile: ShapeType,
+    pub projectile: RigidBody,
     pub projectile_scale: f64,
     pub contacts: Vec<Vector2f<f64>>,
+    pub textures: HashMap<MaterialName, Rc<Texture>>,
 }
 
 impl Default for Game {
@@ -81,7 +89,7 @@ impl Default for Game {
             50.0, 
             color::OLIVE
         ));
-        let floor = RigidBody::new(floor_shape, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
+        let floor = RigidBody::new(floor_shape, CONCRETE, true);
 
         let mut ramp_shape1 = ShapeType::Polygon(Polygon::new_rectangle(
             Vector2f::new(450.0, 300.0), 
@@ -97,25 +105,33 @@ impl Default for Game {
         ramp_shape2.rotate(-0.5);
         ramp_shape2.set_color(color::MAROON);
 
+        let ramp1 = RigidBody::new(ramp_shape1, STEEL, true); 
+        let ramp2 = RigidBody::new(ramp_shape2, ICE,  true);
+
         let triangle = RigidBody::new(
             ShapeType::Polygon(
                 Polygon::new_regular_polygon(3, 60.0, Vector2f::new(800.0, 595.0), color::GREEN)),
-            1.0,
-            BASE_ELASTICITY,
-            BASE_STATIC_FRICTION,
-            BASE_DYNAMIC_FRICTION,
-            true,
+                WOOD,
+                true,
         );
 
-        let ramp1 = RigidBody::new(ramp_shape1, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true); 
-        let ramp2 = RigidBody::new(ramp_shape2, 1.0, BASE_ELASTICITY, BASE_STATIC_FRICTION, BASE_DYNAMIC_FRICTION, true);
+        let tex_settings = TextureSettings::new();
+        let tex_path = Path::new("./src/assets/textures/pixel");        
+        let mut tex_map = HashMap::new();
+
+        tex_map.insert(MaterialName::Concrete, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
+        tex_map.insert(MaterialName::Steel, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
+        tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
+        tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
+
         Self { 
             settings: GameSettings::default(), 
             bodies: vec![floor, ramp1, ramp2, triangle], 
             target: None, 
-            projectile: ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::RED)), 
+            projectile: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
             projectile_scale: 1.0, 
             contacts: vec![], 
+            textures: tex_map,
         }
     }
 }
@@ -125,7 +141,7 @@ impl Game {
         graphics::clear(color::WHITE, gl);
 
         for obj in self.bodies.as_slice() {
-            obj.shape.draw(c.transform, gl);
+            obj.draw(c.transform, &self.textures.get(&obj.material.name).unwrap(), c, gl);
             if self.settings.view.show_velocites {
                 let o = obj.shape.get_center();
                 let vel = obj.linear_velocity;

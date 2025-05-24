@@ -1,5 +1,5 @@
 use crate::game::Game;
-use crate::game_states::*;
+use crate::game_state::*;
 use crate::Vector2f;
 use piston_window::*;
 

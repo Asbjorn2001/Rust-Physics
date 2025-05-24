@@ -4,7 +4,7 @@ use crate::Vector2f;
 use crate::GlGraphics;
 
 pub trait Renderable {
-    fn draw(&self, tansform: Matrix2d, gl: &mut GlGraphics);
+    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics);
 }
 
 pub trait Shape : Renderable {

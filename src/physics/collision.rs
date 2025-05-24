@@ -26,7 +26,7 @@ pub fn point_segment_distance(p: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f6
 
 
 pub fn contact_poly_circle(p: &Polygon, c: &Circle) -> Vec<Vector2f<f64>> {
-    let verts = p.get_vertices();
+    let verts = p.get_transformed_vertices();
     let mut min_dist_sq = f64::INFINITY;
     let mut cp = Vector2f::zero();
     for i in 0..verts.len() {
@@ -81,8 +81,8 @@ pub fn contact_poly_poly(a: &Polygon, b: &Polygon) -> Vec<Vector2f<f64>> {
         }
     };
 
-    let a_verts = a.get_vertices();
-    let b_verts = b.get_vertices();
+    let a_verts = a.get_transformed_vertices();
+    let b_verts = b.get_transformed_vertices();
     
     iteration(&a_verts, &b_verts, false);
     iteration(&b_verts, &a_verts, false);
@@ -143,8 +143,8 @@ fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>
 
 
 pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
-    let a_verts = a.get_vertices();
-    let b_verts = b.get_vertices();
+    let a_verts = a.get_transformed_vertices();
+    let b_verts = b.get_transformed_vertices();
     
     if let Some(a_res) = find_min_seperation(&a_verts, &b_verts) {
         if let Some(mut b_res) = find_min_seperation(&b_verts, &a_verts) {
@@ -159,7 +159,7 @@ pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
 
 pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
     let mut result = CollisionData(f64::NEG_INFINITY, Vector2f::new(0.0, 0.0));
-    let poly_verts = p.get_vertices();
+    let poly_verts = p.get_transformed_vertices();
     let mut closest_point = Vector2f::zero();
     let mut distance = f64::INFINITY;
     for i in 0..poly_verts.len() {
