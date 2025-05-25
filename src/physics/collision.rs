@@ -5,8 +5,6 @@ use crate::Vector2f;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 
-use super::shape::Shape;
-
 // Returns distance squared and cp
 pub fn point_segment_distance(p: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f64>) -> (f64, Vector2f<f64>) {
     let ab = b - a;

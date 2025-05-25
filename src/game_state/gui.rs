@@ -103,12 +103,34 @@ impl GUI {
             },
         );
 
+        button_position.y += 75.0;
+        rect.color = if model.settings.view.show_tiles { color::CYAN } else { color::RED };
+        let display = Display::new(rect, DisplayContent::Text((text, "Show tiles".to_string())));
+        let show_tiles_button = GUIButton::new(
+            button_position, 
+            button_size, 
+            display,
+            |btn, event, game| { 
+                match event {
+                    GUIEvent::Click => {
+                        game.settings.view.show_tiles = !game.settings.view.show_tiles;
+                        btn.display.rect.color = if game.settings.view.show_tiles { color::CYAN } else { color::RED };
+                    }
+                    GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
+                    GUIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
+                    _ => {}
+                }
+                event
+            },
+        );
+
         Self { 
             components: vec![
                 Box::new(back_button),
                 Box::new(enable_launch_button),
                 Box::new(show_velocity_button),
                 Box::new(show_contacts_button),
+                Box::new(show_tiles_button),
             ] 
         }
     }

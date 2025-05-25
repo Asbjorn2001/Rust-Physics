@@ -5,4 +5,4 @@ pub mod shape_type;
 pub mod collision;
 pub mod rigid_body;
 pub mod material;
-pub mod shape_mesh;
+pub mod tiled_mesh;

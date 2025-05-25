@@ -1,7 +1,3 @@
-use std::path::Path;
-use std::rc::Rc;
-
-use crate::game;
 use crate::physics::material::CONCRETE;
 use crate::physics::material::ICE;
 use crate::physics::material::STEEL;
@@ -13,14 +9,15 @@ use crate::Vector2f;
 use crate::color;
 use crate::Text;
 use crate::GlyphCache;
-use crate::physics::shape::Renderable;
 use crate::game_state::GameState;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 use crate::physics::shape_type::ShapeType;
 use super::pause_state::PauseState;
 use crate::Texture;
+use graphics::math::translate;
 use piston_window::*;
+use vecmath::row_mat2x3_transform_pos2;
 use crate::game::Game;
 use crate::GlGraphics;
 use super::gui::GUI;
@@ -38,7 +35,7 @@ pub struct PlayingState {
 impl GameState for PlayingState {
     fn draw(&self, game: &Game, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         game.draw(glyphs, c, gl);
-        
+
         self.gui.draw(glyphs, c, gl);
         
         if self.show_shape_menu {
@@ -57,10 +54,10 @@ impl GameState for PlayingState {
             if game.settings.enable_launch {
                 let projectile_pos = game.projectile.shape.get_center();
                 let line = [projectile_pos.x, projectile_pos.y, target.x, target.y];
-                graphics::line(game.projectile.shape.get_color(), 1.0, line, c.transform, gl);
+                graphics::line(color::BLACK, 1.0, line, game.camera_transform, gl);
 
                 let projectile = RigidBody::new(game.projectile.shape.scale(game.projectile_scale), game.projectile.material, false);
-                projectile.draw(c.transform, game.textures.get(&projectile.material.name).unwrap(), c, gl);
+                projectile.draw(game.camera_transform, game.textures.get(&projectile.material.name).unwrap(), c, gl);
             }
         }
     }   
@@ -128,20 +125,26 @@ impl GameState for PlayingState {
             game.update(&args);
         }
 
+        let dims = Vector2f::from(game.context.get_view_size());
+        let inv_scale = 1.0 / game.settings.camera.scale;
+        let transform = translate(game.settings.camera.position.into()).scale(inv_scale, inv_scale).trans_pos(-dims / 2.0);
+        let cursor_world_position = Vector2f::from(row_mat2x3_transform_pos2(transform, cursor_pos.into()));
+
         // Set target on press
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             if game.settings.enable_launch && !interaction {
-                game.target = Some(cursor_pos);
+                game.target = Some(cursor_world_position.into());
             } 
         }
 
         // Launch on release
         if let Some(target) = game.target {
-            game.projectile.shape.set_center(cursor_pos);
+            game.projectile.shape.set_center(cursor_world_position);
             if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
-                let velocity = (target - cursor_pos) * 2.0;
+                let velocity = (target - cursor_world_position) * 2.0;
 
-                let mut body = RigidBody::from(game.projectile.shape.scale(game.projectile_scale));
+                let shape = game.projectile.shape.scale(game.projectile_scale);
+                let mut body = RigidBody::new(shape, game.projectile.material, false);
                 body.linear_velocity = velocity;
                 game.bodies.push(body);
 

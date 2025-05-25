@@ -28,13 +28,15 @@ use game::game_view::*;
 
 static FONT: &str = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
 
+pub const WINDOW_WIDTH: f64 = 1280.0;
+pub const WINDOW_HEIGHT: f64 = 720.0;
+
 fn main() {
     // Change this to OpenGL::V2_1 if not working.
     let opengl = OpenGL::V3_2;
-    let start_dims = [1280, 720];
 
     // Create a Glutin window.
-    let mut window: Window = WindowSettings::new("piston-game", start_dims)
+    let mut window: Window = WindowSettings::new("piston-game", [WINDOW_WIDTH, WINDOW_HEIGHT])
         .graphics_api(opengl)
         .resizable(false)
         .build()
@@ -58,12 +60,14 @@ fn main() {
     while let Some(e) = events.next(&mut window) {
         
         game_controller.event(&e);
-
+        
         if let Some(args) = e.render_args() {
-            gl.draw(args.viewport(), |c, g| {
-                graphics::clear(color::WHITE, g);
+            gl.draw(args.viewport(), |c, gl| {
+                graphics::clear(color::WHITE, gl);
                 
-                game_view.draw(&game_controller, &mut glyphs, c, g);
+                game_controller.game.update_camera(c);
+
+                game_view.draw(&game_controller, &mut glyphs, c, gl);
             });
         }
     }

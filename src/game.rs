@@ -2,9 +2,14 @@ pub mod game_controller;
 pub mod game_view;
 
 use std::collections::HashMap;
+use std::mem::transmute;
 use std::path::Path;
 use std::rc::Rc;
 
+use graphics::math::scale;
+use graphics::math::translate;
+use graphics::math::Matrix2d;
+use graphics::Transformed;
 use piston::UpdateArgs;
 use piston_window::TextureSettings;
 use rand::distr::Map;
@@ -28,19 +33,37 @@ use crate::Context;
 
 
 const PHYSICS_ITERATIONS: usize = 10;
+const MAX_SCALE: f64 = 10.0;
+const MIN_SCALE: f64 = 0.1;
 
 pub struct GameSettings {
-    pub physics: PhysicsSettings,
+    pub camera: CameraSettings,
     pub view: ViewSettings,
+    pub physics: PhysicsSettings,
     pub enable_launch: bool,
 }
 
 impl Default for GameSettings {
     fn default() -> Self {
         Self { 
-            physics: PhysicsSettings::default(), 
+            camera: CameraSettings::default(),
             view: ViewSettings::default(),
+            physics: PhysicsSettings::default(), 
             enable_launch: true,
+        }
+    }
+}
+
+pub struct CameraSettings {
+    pub scale: f64,
+    pub position: Vector2f<f64>,
+}
+
+impl Default for CameraSettings {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            position: Vector2f::new(640.0, 360.0),
         }
     }
 }
@@ -48,6 +71,7 @@ impl Default for GameSettings {
 pub struct ViewSettings {
     pub show_velocites: bool,
     pub show_contact_points: bool,
+    pub show_tiles: bool,
 }
 
 impl Default for ViewSettings {
@@ -55,6 +79,7 @@ impl Default for ViewSettings {
         Self { 
             show_velocites: false, 
             show_contact_points: false, 
+            show_tiles: false,
         }
     }
 }
@@ -78,6 +103,8 @@ pub struct Game {
     pub projectile_scale: f64,
     pub contacts: Vec<Vector2f<f64>>,
     pub textures: HashMap<MaterialName, Rc<Texture>>,
+    pub context: Context,
+    pub camera_transform: Matrix2d,
 }
 
 impl Default for Game {
@@ -116,13 +143,13 @@ impl Default for Game {
         );
 
         let tex_settings = TextureSettings::new();
-        let tex_path = Path::new("./src/assets/textures/pixel");        
+        let tex_path = Path::new("./src/assets/textures/materials");        
         let mut tex_map = HashMap::new();
 
         tex_map.insert(MaterialName::Concrete, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
-        tex_map.insert(MaterialName::Steel, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
-        tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
-        tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("concrete.png"), &tex_settings).unwrap()));
+        tex_map.insert(MaterialName::Steel, Rc::new(Texture::from_path(Path::new(&tex_path).join("steel.png"), &tex_settings).unwrap()));
+        tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("ice.png"), &tex_settings).unwrap()));
+        tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
         Self { 
             settings: GameSettings::default(), 
@@ -132,6 +159,8 @@ impl Default for Game {
             projectile_scale: 1.0, 
             contacts: vec![], 
             textures: tex_map,
+            context: Context::new(),
+            camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         }
     }
 }
@@ -141,21 +170,32 @@ impl Game {
         graphics::clear(color::WHITE, gl);
 
         for obj in self.bodies.as_slice() {
-            obj.draw(c.transform, &self.textures.get(&obj.material.name).unwrap(), c, gl);
+            obj.draw(self.camera_transform, &self.textures.get(&obj.material.name).unwrap(), c, gl);
+            if self.settings.view.show_tiles {
+                obj.mesh.draw_tile_outline(self.camera_transform.trans_pos(obj.shape.get_center()).rot_rad(obj.shape.get_rotation()), gl);
+            }
             if self.settings.view.show_velocites {
                 let o = obj.shape.get_center();
                 let vel = obj.linear_velocity;
-                let line = [o.x, o.y, o.x + vel.x, o.y + vel.y];
-                graphics::line(color::CYAN, 1.0, line, c.transform, gl);
+                let l = [o.x, o.y, o.x + vel.x, o.y + vel.y];
+                graphics::line(color::CYAN, 1.0, l, self.camera_transform, gl);
             }
         }
 
         if self.settings.view.show_contact_points {
             for cp in self.contacts.as_slice() {
                 let square = graphics::rectangle::centered_square(cp.x, cp.y, 5.0);
-                graphics::ellipse(color::YELLOW, square, c.transform, gl);
+                graphics::ellipse(color::YELLOW, square, self.camera_transform, gl);
             }
         }
+    }
+
+    pub fn update_camera(&mut self, c: Context) {
+        self.context = c;
+        let dims = Vector2f::from(c.get_view_size());
+        self.camera_transform = c.transform.trans_pos(dims / 2.0)
+                                .scale(self.settings.camera.scale, self.settings.camera.scale)
+                                .trans_pos(-self.settings.camera.position);
     }
 
     pub fn update(&mut self, args: &UpdateArgs) {
