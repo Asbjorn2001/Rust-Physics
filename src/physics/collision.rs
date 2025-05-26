@@ -1,4 +1,5 @@
 use core::f64;
+use std::vec;
 
 use crate::utils::helpers::nearly_equal;
 use crate::Vector2f;
@@ -42,26 +43,19 @@ pub fn contact_poly_circle(p: &Polygon, c: &Circle) -> Vec<Vector2f<f64>> {
     vec![cp]
 }
 
-
-pub fn contact_poly_poly(a: &Polygon, b: &Polygon) -> Vec<Vector2f<f64>> {
+fn find_contacts(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>>) -> Vec<Vector2f<f64>> {
     let mut contact_count = 0;
     let mut contact1 = Vector2f::zero();
     let mut contact2 = Vector2f::zero();
-    
     let mut min_dist_sq = f64::INFINITY;
 
-    let mut iteration = |verts1: &Vec<Vector2f<f64>>, verts2: &Vec<Vector2f<f64>>, swap: bool| {
+    let mut iteration = |verts1: &Vec<Vector2f<f64>>, verts2: &Vec<Vector2f<f64>>| {
         for p in verts1 {
             for i in 0..verts2.len() {
                 let va = verts2[i];
                 let vb = verts2[(i + 1) % verts2.len()];
 
-                let (dist_sq, cp) = 
-                if swap {
-                    point_segment_distance(*p, vb, va)
-                } else {
-                    point_segment_distance(*p, va, vb)
-                };
+                let (dist_sq, cp) = point_segment_distance(*p, va, vb);
                 
                 if nearly_equal(dist_sq, min_dist_sq, 0.05) {
                     if !cp.nearly_equal(contact1, 0.05) {
@@ -79,11 +73,8 @@ pub fn contact_poly_poly(a: &Polygon, b: &Polygon) -> Vec<Vector2f<f64>> {
         }
     };
 
-    let a_verts = a.get_transformed_vertices();
-    let b_verts = b.get_transformed_vertices();
-    
-    iteration(&a_verts, &b_verts, false);
-    iteration(&b_verts, &a_verts, false);
+    iteration(&a_verts, &b_verts);
+    iteration(&b_verts, &a_verts);
 
     if contact_count > 1 {
         return vec![contact1, contact2];
@@ -92,6 +83,20 @@ pub fn contact_poly_poly(a: &Polygon, b: &Polygon) -> Vec<Vector2f<f64>> {
     }
 
     return vec![];
+}
+
+pub fn contact_poly_poly(a: &Polygon, b: &Polygon) -> Vec<Vector2f<f64>> {
+    let a_verts = a.get_transformed_vertices();
+    let b_verts = b.get_transformed_vertices();
+
+    find_contacts(&a_verts, &b_verts)
+}
+
+pub fn contact_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> Vec<Vector2f<f64>> {
+    let a_verts = p.get_transformed_vertices();
+    let b_verts = vec![a, b];
+
+    find_contacts(&a_verts, &b_verts)
 }
 
 
@@ -114,6 +119,24 @@ pub fn collision_circle_circle(a: &Circle, b: &Circle) -> Option<CollisionData> 
     None
 }
 
+pub fn collision_circle_segment(c: &Circle, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
+    let ab = b - a;
+    let ac = c.center - a;
+
+    let t = ac.dot(ab) / ab.dot(ab);
+    let t = t.clamp(0.0, 1.0);
+
+    let deepest_point = a + ab * t;
+    let cd = deepest_point - c.center;
+    let dist_sq = cd.len_squared();
+
+    if dist_sq <= c.radius * c.radius {
+        let sep = f64::sqrt(dist_sq) - c.radius;
+        Some(CollisionData(sep, cd.normalize())) // With normal pointing towards segment
+    } else {
+        None
+    }
+}
 
 fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>>) -> Option<CollisionData> {
     let mut result = CollisionData(f64::NEG_INFINITY, Vector2f::new(0.0, 0.0));
@@ -148,6 +171,20 @@ pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
         if let Some(mut b_res) = find_min_seperation(&b_verts, &a_verts) {
             b_res.1 = -b_res.1; // normal always points towards b
             return if a_res.0 > b_res.0 { Some(a_res) } else { Some(b_res) };
+        }
+    }
+
+    None
+}
+
+pub fn collision_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
+    let poly_verts = p.get_transformed_vertices();
+    let segment = vec![a, b];
+
+    if let Some(poly_res) = find_min_seperation(&poly_verts, &segment) {
+        if let Some(mut seg_res) = find_min_seperation(&segment, &poly_verts) {
+            seg_res.1 = -seg_res.1; // normal always points towards the segment
+            return if poly_res.0 > seg_res.0 { Some(poly_res) } else { Some(seg_res) };
         }
     }
 

@@ -40,7 +40,7 @@ impl Shape for Circle {
     }
 
     fn contains_point(&self, point: Vector2f<f64>) -> bool {
-        (self.center - point).len() < self.radius
+        (self.center - point).len() <= self.radius
     }
 }
 
@@ -52,5 +52,9 @@ impl Circle {
             rotation: 0.0,
             color: color, 
         }
+    }
+
+    pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
+        self.center + (point - self.center).normalize() * self.radius
     }
 }

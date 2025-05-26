@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::physics::material::CONCRETE;
 use crate::physics::material::ICE;
 use crate::physics::material::STEEL;
@@ -146,10 +149,13 @@ impl GameState for PlayingState {
                 let shape = game.projectile.shape.scale(game.projectile_scale);
                 let mut body = RigidBody::new(shape, game.projectile.material, false);
                 body.linear_velocity = velocity;
-                game.bodies.push(body);
+                game.bodies.push(Rc::new(RefCell::new(body)));
 
                 game.target = None;
             }
+        } else if let Some(ptr) = &game.string.head {
+            let mut head = ptr.borrow_mut();
+            head.shape.set_center(cursor_world_position);
         }
 
         if let Some(Button::Keyboard(key)) = e.press_args() {

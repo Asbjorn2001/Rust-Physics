@@ -1,6 +1,7 @@
 pub mod game_controller;
 pub mod game_view;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::transmute;
 use std::path::Path;
@@ -29,6 +30,7 @@ use crate::physics::polygon::Polygon;
 use crate::physics::shape::Renderable;
 use crate::color;
 use crate::physics::rigid_body::*;
+use crate::physics::string_body::StringBody;
 use crate::Context;
 
 
@@ -97,7 +99,7 @@ impl Default for PhysicsSettings {
 
 pub struct Game {
     pub settings: GameSettings,
-    pub bodies: Vec<RigidBody>,
+    pub bodies: Vec<Rc<RefCell<RigidBody>>>,
     pub target: Option<Vector2f<f64>>,
     pub projectile: RigidBody,
     pub projectile_scale: f64,
@@ -105,6 +107,7 @@ pub struct Game {
     pub textures: HashMap<MaterialName, Rc<Texture>>,
     pub context: Context,
     pub camera_transform: Matrix2d,
+    pub string: StringBody,
 }
 
 impl Default for Game {
@@ -151,9 +154,19 @@ impl Default for Game {
         tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("ice.png"), &tex_settings).unwrap()));
         tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
+
+        let head = RigidBody::from(Circle::new(Vector2f::new(600.0, 100.0), 25.0, color::BLACK));
+        let tail = RigidBody::from(Circle::new(Vector2f::new(400.0, 200.0), 25.0, color::GRAY));
+        let head_ref = Rc::new(RefCell::new(head));
+        let tail_ref = Rc::new(RefCell::new(tail));
+
+        let mut string = StringBody::new(Vector2f::new(500.0, 100.0), 10);
+        string.head = Some(head_ref.clone());
+        string.tail = Some(tail_ref.clone());
+
         Self { 
             settings: GameSettings::default(), 
-            bodies: vec![floor, ramp1, ramp2, triangle], 
+            bodies: vec![Rc::new(RefCell::new(floor)), Rc::new(RefCell::new(ramp1)), Rc::new(RefCell::new(ramp2)), Rc::new(RefCell::new(triangle)), head_ref, tail_ref], 
             target: None, 
             projectile: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
             projectile_scale: 1.0, 
@@ -161,6 +174,7 @@ impl Default for Game {
             textures: tex_map,
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            string, 
         }
     }
 }
@@ -169,7 +183,9 @@ impl Game {
     pub fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         graphics::clear(color::WHITE, gl);
 
+        self.string.draw(self.camera_transform, c, gl);
         for obj in self.bodies.as_slice() {
+            let obj = obj.borrow();
             obj.draw(self.camera_transform, &self.textures.get(&obj.material.name).unwrap(), c, gl);
             if self.settings.view.show_tiles {
                 obj.mesh.draw_tile_outline(self.camera_transform.trans_pos(obj.shape.get_center()).rot_rad(obj.shape.get_rotation()), gl);
@@ -202,16 +218,20 @@ impl Game {
         self.contacts.clear();
         
         for obj in self.bodies.as_mut_slice() {
+            let mut obj = obj.borrow_mut();
             obj.update_vectors(args.dt, &self.settings.physics);
         }
+        self.string.update_vectors(args.dt, &self.settings.physics);
 
         // Detect collisions
         let mut collisions = vec![];
         for i in 0..self.bodies.len() {
             for j in (i+1)..self.bodies.len() {
                 let (a, b) = get_pair_mut(&mut self.bodies, i, j);
-                if let Some(CollisionData(_, normal)) = a.collide_with(b) {
-                    let contacts = a.find_contact_points(b, normal);
+                let mut a = a.borrow_mut();
+                let mut b = b.borrow_mut();
+                if let Some(CollisionData(_, normal)) = a.collide_with(&mut b) {
+                    let contacts = a.find_contact_points(&mut b, normal);
                     for cp in contacts.clone() {
                         self.contacts.push(cp);
                     }
@@ -220,14 +240,24 @@ impl Game {
             }
         }
 
+        for obj in self.bodies.as_slice() {
+            let obj = obj.borrow();
+            self.contacts.extend(self.string.collide_with(&obj));
+        }
+
+        
+
         // Resolve collisions
         let mut rng = rand::rng();
         for _ in 0..PHYSICS_ITERATIONS {
+            self.string.update_2();
             collisions.shuffle(&mut rng);
             for (i, j, normal, contacts) in collisions.as_slice() {
                 let (a, b) = get_pair_mut(&mut self.bodies, *i, *j);
-                a.resolve_collision(b, normal, contacts);
+                let mut a = a.borrow_mut();
+                let mut b = b.borrow_mut();
+                a.resolve_collision(&mut b, normal, contacts);
             }
-        }
+        }        
     }
 }

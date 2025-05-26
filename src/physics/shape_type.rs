@@ -111,4 +111,11 @@ impl ShapeType {
             } 
         }
     }
+
+    pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
+        match self {
+            ShapeType::Circle(c) => c.find_closest_point(point),
+            ShapeType::Polygon(p) => p.find_closest_point(point),
+        }
+    }
 }
