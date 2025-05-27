@@ -1,3 +1,4 @@
+use core::f64;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -124,7 +125,9 @@ impl GameState for PlayingState {
         }
         
         // Update game logic
+        let mut dt = 1.0;
         if let Some(args) = e.update_args() {
+            dt = args.dt;
             game.update(&args);
         }
 
@@ -153,9 +156,9 @@ impl GameState for PlayingState {
 
                 game.target = None;
             }
-        } else if let Some(ptr) = &game.string.head {
-            let mut head = ptr.borrow_mut();
-            head.shape.set_center(cursor_world_position);
+        } else {
+            //let first_joint = &mut game.string.joints[0]; 
+            //first_joint.velocity = cursor_world_position - first_joint.position;
         }
 
         if let Some(Button::Keyboard(key)) = e.press_args() {

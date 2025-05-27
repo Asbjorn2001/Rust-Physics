@@ -11,7 +11,7 @@ use crate::physics::shape_type::ShapeType;
 use crate::physics::shape::Shape;
 use crate::physics::polygon::Polygon;
 use crate::physics::circle::Circle;
-use super::material::*;
+use super::material::{self, *};
 use super::tiled_mesh::TiledMesh;
 use super::collision::*;
 
@@ -77,6 +77,14 @@ impl RigidBody {
             mesh: TiledMesh::from(&shape),
             shape,
         }
+    }
+
+    pub fn get_inv_mass(&self) -> f64 {
+        if self.is_static { 0.0 } else { 1.0 / (self.shape.area() * self.material.density) }
+    }
+
+    pub fn get_inv_inertia(&self) -> f64 {
+        if self.is_static { 0.0 } else { 1.0 / (self.shape.momemnt_of_inertia() * self.material.density) }
     }
 
     pub fn update_vectors(&mut self, dt: f64, physics: &PhysicsSettings) {
@@ -159,10 +167,10 @@ impl RigidBody {
         let b = other;
 
         // Calculate constants
-        let a_inv_mass = if a.is_static { 0.0 } else { 1.0 / (a.shape.area() * a.material.density) };
-        let a_inv_inertia = if a.is_static { 0.0 } else { 1.0 / (a.shape.momemnt_of_inertia() * a.material.density) };
-        let b_inv_mass = if b.is_static { 0.0 } else { 1.0 / (b.shape.area() * b.material.density) };
-        let b_inv_inertia = if b.is_static { 0.0 } else { 1.0 / (b.shape.momemnt_of_inertia() * b.material.density) };
+        let a_inv_mass = a.get_inv_mass();
+        let a_inv_inertia = a.get_inv_inertia();
+        let b_inv_mass = b.get_inv_mass();
+        let b_inv_inertia = b.get_inv_inertia();
 
         let restitution = a.material.restitution.min(b.material.restitution);
 

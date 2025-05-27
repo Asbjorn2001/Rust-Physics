@@ -1,8 +1,10 @@
 pub mod game_controller;
 pub mod game_view;
 
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::mem::transmute;
 use std::path::Path;
 use std::rc::Rc;
@@ -107,7 +109,7 @@ pub struct Game {
     pub textures: HashMap<MaterialName, Rc<Texture>>,
     pub context: Context,
     pub camera_transform: Matrix2d,
-    pub string: StringBody,
+    pub strings: Vec<Rc<RefCell<StringBody>>>,
 }
 
 impl Default for Game {
@@ -119,7 +121,7 @@ impl Default for Game {
             50.0, 
             color::OLIVE
         ));
-        let floor = RigidBody::new(floor_shape, CONCRETE, true);
+        let floor = Rc::new(RefCell::new(RigidBody::new(floor_shape, CONCRETE, true)));
 
         let mut ramp_shape1 = ShapeType::Polygon(Polygon::new_rectangle(
             Vector2f::new(450.0, 300.0), 
@@ -135,15 +137,15 @@ impl Default for Game {
         ramp_shape2.rotate(-0.5);
         ramp_shape2.set_color(color::MAROON);
 
-        let ramp1 = RigidBody::new(ramp_shape1, STEEL, true); 
-        let ramp2 = RigidBody::new(ramp_shape2, ICE,  true);
+        let ramp1 = Rc::new(RefCell::new(RigidBody::new(ramp_shape1, STEEL, true)));
+        let ramp2 = Rc::new(RefCell::new(RigidBody::new(ramp_shape2, ICE,  true)));
 
-        let triangle = RigidBody::new(
+        let triangle = Rc::new(RefCell::new(RigidBody::new(
             ShapeType::Polygon(
                 Polygon::new_regular_polygon(3, 60.0, Vector2f::new(800.0, 595.0), color::GREEN)),
                 WOOD,
                 true,
-        );
+        )));
 
         let tex_settings = TextureSettings::new();
         let tex_path = Path::new("./src/assets/textures/materials");        
@@ -155,18 +157,18 @@ impl Default for Game {
         tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
 
-        let head = RigidBody::from(Circle::new(Vector2f::new(600.0, 100.0), 25.0, color::BLACK));
-        let tail = RigidBody::from(Circle::new(Vector2f::new(400.0, 200.0), 25.0, color::GRAY));
-        let head_ref = Rc::new(RefCell::new(head));
-        let tail_ref = Rc::new(RefCell::new(tail));
+        let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 300.0), 25.0, color::BLACK)), STEEL, false);
+        let tail = RigidBody::from(Polygon::new_regular_polygon(5, 25.0, Vector2f::new(640.0, 500.0), color::GRAY));
+        let head = Rc::new(RefCell::new(head));
+        let tail = Rc::new(RefCell::new(tail));
 
-        let mut string = StringBody::new(Vector2f::new(500.0, 100.0), 10);
-        string.head = Some(head_ref.clone());
-        string.tail = Some(tail_ref.clone());
+        let mut string = StringBody::new(Vector2f::new(640.0, 300.0), 20);
+        string.joints[0].attachment = Some(head.clone());
+        string.joints.last_mut().unwrap().attachment = Some(tail.clone());
 
         Self { 
             settings: GameSettings::default(), 
-            bodies: vec![Rc::new(RefCell::new(floor)), Rc::new(RefCell::new(ramp1)), Rc::new(RefCell::new(ramp2)), Rc::new(RefCell::new(triangle)), head_ref, tail_ref], 
+            bodies: vec![floor, ramp1, ramp2, triangle, head, tail], 
             target: None, 
             projectile: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
             projectile_scale: 1.0, 
@@ -174,7 +176,7 @@ impl Default for Game {
             textures: tex_map,
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            string, 
+            strings: vec![Rc::new(RefCell::new(string))],
         }
     }
 }
@@ -183,7 +185,9 @@ impl Game {
     pub fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         graphics::clear(color::WHITE, gl);
 
-        self.string.draw(self.camera_transform, c, gl);
+        for string in self.strings.as_slice() {
+            string.borrow().draw(self.camera_transform, c, gl);
+        }
         for obj in self.bodies.as_slice() {
             let obj = obj.borrow();
             obj.draw(self.camera_transform, &self.textures.get(&obj.material.name).unwrap(), c, gl);
@@ -221,7 +225,6 @@ impl Game {
             let mut obj = obj.borrow_mut();
             obj.update_vectors(args.dt, &self.settings.physics);
         }
-        self.string.update_vectors(args.dt, &self.settings.physics);
 
         // Detect collisions
         let mut collisions = vec![];
@@ -232,25 +235,15 @@ impl Game {
                 let mut b = b.borrow_mut();
                 if let Some(CollisionData(_, normal)) = a.collide_with(&mut b) {
                     let contacts = a.find_contact_points(&mut b, normal);
-                    for cp in contacts.clone() {
-                        self.contacts.push(cp);
-                    }
+                    self.contacts.extend(contacts.clone());
                     collisions.push((i, j, normal, contacts));
                 }
             }
         }
 
-        for obj in self.bodies.as_slice() {
-            let obj = obj.borrow();
-            self.contacts.extend(self.string.collide_with(&obj));
-        }
-
-        
-
         // Resolve collisions
         let mut rng = rand::rng();
         for _ in 0..PHYSICS_ITERATIONS {
-            self.string.update_2();
             collisions.shuffle(&mut rng);
             for (i, j, normal, contacts) in collisions.as_slice() {
                 let (a, b) = get_pair_mut(&mut self.bodies, *i, *j);
@@ -259,5 +252,15 @@ impl Game {
                 a.resolve_collision(&mut b, normal, contacts);
             }
         }        
+
+        // Resolve constraints
+        let mut new_strings = vec![];
+        for string in self.strings.as_slice() {
+            let mut string = string.borrow_mut();
+            if let Some(new_string) = string.update(args.dt, &self.settings.physics, &self.bodies) {
+                new_strings.push(Rc::new(RefCell::new(new_string)));
+            }
+        }
+        self.strings.extend(new_strings);
     }
 }
