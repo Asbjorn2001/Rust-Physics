@@ -21,6 +21,7 @@ use rand::seq::SliceRandom;
 use crate::physics::material::*;
 use crate::physics::shape_type::ShapeType;
 use crate::physics::rigid_body::RigidBody;
+use crate::physics::string_body::Attachment;
 use crate::Vector2f;
 use crate::utils::helpers::*;
 use crate::physics::collision::CollisionData;
@@ -36,7 +37,7 @@ use crate::physics::string_body::StringBody;
 use crate::Context;
 
 
-const PHYSICS_ITERATIONS: usize = 10;
+const PHYSICS_ITERATIONS: usize = 8;
 const MAX_SCALE: f64 = 10.0;
 const MIN_SCALE: f64 = 0.1;
 
@@ -121,7 +122,8 @@ impl Default for Game {
             50.0, 
             color::OLIVE
         ));
-        let floor = Rc::new(RefCell::new(RigidBody::new(floor_shape, CONCRETE, true)));
+        let floor = RigidBody::new(floor_shape, CONCRETE, true);
+        let floor_ref = Rc::new(RefCell::new(floor.clone()));
 
         let mut ramp_shape1 = ShapeType::Polygon(Polygon::new_rectangle(
             Vector2f::new(450.0, 300.0), 
@@ -156,19 +158,26 @@ impl Default for Game {
         tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("ice.png"), &tex_settings).unwrap()));
         tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
+        let mut string1 = StringBody::new(Vector2f::new(640.0, 300.0), 20);
 
-        let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 300.0), 25.0, color::BLACK)), STEEL, false);
+        let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), STEEL, false);
+        let head_ref = Rc::new(RefCell::new(head.clone()));
+        let head_att = Attachment { obj_ref: head_ref.clone(), rel_pos: head.shape.find_closest_point(string1.joints[0].position) - head.shape.get_center()};
+        string1.joints[0].attachment = Some(head_att);
+
         let tail = RigidBody::from(Polygon::new_regular_polygon(5, 25.0, Vector2f::new(640.0, 500.0), color::GRAY));
-        let head = Rc::new(RefCell::new(head));
-        let tail = Rc::new(RefCell::new(tail));
+        let tail_ref = Rc::new(RefCell::new(tail.clone()));
+        let tail_att = Attachment { obj_ref: tail_ref.clone(), rel_pos: tail.shape.find_closest_point(string1.joints.last().unwrap().position) - tail.shape.get_center() };
+        string1.joints.last_mut().unwrap().attachment = Some(tail_att);
 
-        let mut string = StringBody::new(Vector2f::new(640.0, 300.0), 20);
-        string.joints[0].attachment = Some(head.clone());
-        string.joints.last_mut().unwrap().attachment = Some(tail.clone());
+        let mut string2 = StringBody::new(Vector2f::new(640.0, 680.0), 40);
+        
+        let floor_att = Attachment { obj_ref: floor_ref.clone(), rel_pos: floor.shape.find_closest_point(string2.joints[0].position) - floor.shape.get_center() };
+        string2.joints[0].attachment = Some(floor_att);
 
         Self { 
             settings: GameSettings::default(), 
-            bodies: vec![floor, ramp1, ramp2, triangle, head, tail], 
+            bodies: vec![floor_ref, ramp1, ramp2, triangle, head_ref, tail_ref], 
             target: None, 
             projectile: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
             projectile_scale: 1.0, 
@@ -176,7 +185,7 @@ impl Default for Game {
             textures: tex_map,
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            strings: vec![Rc::new(RefCell::new(string))],
+            strings: vec![Rc::new(RefCell::new(string1)), Rc::new(RefCell::new(string2))],
         }
     }
 }
@@ -220,23 +229,22 @@ impl Game {
 
     pub fn update(&mut self, args: &UpdateArgs) {
         self.contacts.clear();
-        
-        for obj in self.bodies.as_mut_slice() {
+
+        for obj in self.bodies.as_slice() {
             let mut obj = obj.borrow_mut();
             obj.update_vectors(args.dt, &self.settings.physics);
         }
 
-        // Detect collisions
+        // Detect body on body collisions and push out
         let mut collisions = vec![];
         for i in 0..self.bodies.len() {
             for j in (i+1)..self.bodies.len() {
                 let (a, b) = get_pair_mut(&mut self.bodies, i, j);
                 let mut a = a.borrow_mut();
                 let mut b = b.borrow_mut();
-                if let Some(CollisionData(_, normal)) = a.collide_with(&mut b) {
-                    let contacts = a.find_contact_points(&mut b, normal);
-                    self.contacts.extend(contacts.clone());
-                    collisions.push((i, j, normal, contacts));
+                if let Some(collision) = a.collide_with(&mut b) {
+                    self.contacts.extend(collision.contacts.clone());
+                    collisions.push((i, j, collision));
                 }
             }
         }
@@ -245,22 +253,22 @@ impl Game {
         let mut rng = rand::rng();
         for _ in 0..PHYSICS_ITERATIONS {
             collisions.shuffle(&mut rng);
-            for (i, j, normal, contacts) in collisions.as_slice() {
+            for (i, j, collision) in collisions.as_slice() {
                 let (a, b) = get_pair_mut(&mut self.bodies, *i, *j);
                 let mut a = a.borrow_mut();
                 let mut b = b.borrow_mut();
-                a.resolve_collision(&mut b, normal, contacts);
+                a.resolve_collision(&mut b, collision);
             }
-        }        
+        }    
 
-        // Resolve constraints
+        // Resolve constraints with verlet integration
         let mut new_strings = vec![];
         for string in self.strings.as_slice() {
             let mut string = string.borrow_mut();
-            if let Some(new_string) = string.update(args.dt, &self.settings.physics, &self.bodies) {
+            if let Some(new_string) = string.resolve_constraints(args.dt, &self.settings.physics, &self.bodies, &mut self.contacts) {
                 new_strings.push(Rc::new(RefCell::new(new_string)));
             }
         }
-        self.strings.extend(new_strings);
+        self.strings.extend(new_strings);    
     }
 }

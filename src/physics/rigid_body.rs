@@ -13,7 +13,7 @@ use crate::physics::polygon::Polygon;
 use crate::physics::circle::Circle;
 use super::material::{self, *};
 use super::tiled_mesh::TiledMesh;
-use super::collision::*;
+use super::collision::{self, *};
 
 pub const GRAVITY: Vector2f<f64> = Vector2f { x: 0.0, y: 90.816 };
 pub const AIR_RESISTANCE: f64 = 0.08;
@@ -93,19 +93,19 @@ impl RigidBody {
         }
 
         self.linear_velocity += physics.gravity * dt;        
+        
         self.linear_velocity *= 1.0 - physics.air_density * dt;
-
-        self.angular_velocity *= 1.0 - physics.air_density * dt;
+        self.angular_velocity *= 1.0 - physics.air_density * dt;   
 
         self.shape.translate(self.linear_velocity * dt);  
-        self.shape.rotate(self.angular_velocity * dt);        
+        self.shape.rotate(self.angular_velocity * dt);     
     }
 
     pub fn collide_with(&mut self, other: &mut RigidBody) -> Option<CollisionData> {
         let push_out = 
         |data: CollisionData, a: &mut RigidBody, b: &mut RigidBody| -> Option<CollisionData> {
-            let CollisionData(mut sep, normal) = data;    
-            sep -= f64::EPSILON;
+            let sep = data.seperation - f64::EPSILON;
+            let normal = data.normal;
             match (a.is_static, b.is_static) {
                 (true, true) | (false, false) => {
                     a.shape.translate(normal * sep / 2.0);
@@ -118,51 +118,55 @@ impl RigidBody {
             Some(data)
         };
 
-        let push_poly_circle = |p: &mut Polygon, c: &mut Circle| {
+        let push_circle_out = |p: &mut Polygon, c: &mut Circle| {
             if p.contains_point(c.center) {
-                let cp = p.find_closest_point(c.center);
-                c.center = cp + (cp - c.center).normalize() * (c.radius + f64::EPSILON);
+                c.center = p.find_closest_point(c.center);
             }
         };
 
+        let mut collision_data = None;
         match (&mut self.shape, &mut other.shape) {
             (ShapeType::Circle(a), ShapeType::Circle(b)) => {
-                if let Some(collision) = collision_circle_circle(a, b) {
-                    return push_out(collision, self, other);
+                if let Some(collision) = collision_circle_circle(&a, &b) {
+                    collision_data = push_out(collision, self, other);
                 } 
             },
             (ShapeType::Circle(c), ShapeType::Polygon(p)) => {
-                push_poly_circle(p, c);
-                if let Some(mut collision) = collision_poly_circle(p, c) {
-                    collision.1 = -collision.1;
-                    return push_out(collision, self, other);
+                push_circle_out(p, c);
+                if let Some(mut collision) = collision_poly_circle(&p, &c) {
+                    collision.normal = -collision.normal;
+                    collision_data = push_out(collision, self, other);
                 }
             }
             (ShapeType::Polygon(p), ShapeType::Circle(c)) => {
-                push_poly_circle(p, c);
-                if let Some(collision) = collision_poly_circle(p, c) {
-                    return push_out(collision, self, other);
+                push_circle_out(p, c);
+                if let Some(collision) = collision_poly_circle(&p, &c) {
+                    collision_data = push_out(collision, self, other);
                 }
             }
             (ShapeType::Polygon(a), ShapeType::Polygon(b)) => {
-                if let Some(collision) = collision_poly_poly(a, b) {
-                    return push_out(collision, self, other);
+                if let Some(collision) = collision_poly_poly(&a, &b) {
+                    collision_data = push_out(collision, self, other);
                 }
             }   
         }
+
+        // Find the contact points
+        if let Some(mut collision) = collision_data {
+            collision.contacts = match (&self.shape, &other.shape) {
+                (ShapeType::Circle(a), ShapeType::Circle(_)) => vec![a.center + collision.normal * a.radius],
+                (ShapeType::Circle(a), ShapeType::Polygon(b)) => contact_poly_circle(b, a),
+                (ShapeType::Polygon(a), ShapeType::Circle(b)) => contact_poly_circle(a, b),
+                (ShapeType::Polygon(a), ShapeType::Polygon(b)) => contact_poly_poly(a, b),
+            };
+            return Some(collision)
+        }
+
         None
     }
 
-    pub fn find_contact_points(&self, other: &RigidBody, collision_normal: Vector2f<f64>) -> Vec<Vector2f<f64>> {
-        match (&self.shape, &other.shape) {
-            (ShapeType::Circle(a), ShapeType::Circle(_)) => vec![a.center + collision_normal * a.radius],
-            (ShapeType::Circle(a), ShapeType::Polygon(b)) => contact_poly_circle(b, a),
-            (ShapeType::Polygon(a), ShapeType::Circle(b)) => contact_poly_circle(a, b),
-            (ShapeType::Polygon(a), ShapeType::Polygon(b)) => contact_poly_poly(a, b),
-        }
-    }
 
-    pub fn resolve_collision(&mut self, other: &mut RigidBody, normal: &Vector2f<f64>, contact_points: &Vec<Vector2f<f64>>) {
+    pub fn resolve_collision(&mut self, other: &mut RigidBody, collision: &CollisionData) {
         let a = self;
         let b = other;
 
@@ -177,8 +181,8 @@ impl RigidBody {
         let sf = (a.material.static_friction + b.material.static_friction) / 2.0;
         let df = (a.material.dynamic_friction + b.material.dynamic_friction) / 2.0;
 
-        let normal = *normal;
-        for contact_point in contact_points {
+        let normal = collision.normal;
+        for contact_point in collision.contacts.as_slice() {
             let ra = *contact_point - a.shape.get_center();
             let rb = *contact_point - b.shape.get_center();
             let a_contact_vel = a.linear_velocity + ra.perpendicular() * a.angular_velocity;

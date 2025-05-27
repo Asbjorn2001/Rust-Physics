@@ -100,8 +100,12 @@ pub fn contact_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> 
 }
 
 
-#[derive(Clone, Copy)]
-pub struct CollisionData(pub f64, pub Vector2f<f64>);
+#[derive(Clone)]
+pub struct CollisionData {
+    pub seperation: f64,
+    pub normal: Vector2f<f64>,
+    pub contacts: Vec<Vector2f<f64>>,
+}
 
 
 pub fn collision_circle_circle(a: &Circle, b: &Circle) -> Option<CollisionData> {
@@ -110,15 +114,16 @@ pub fn collision_circle_circle(a: &Circle, b: &Circle) -> Option<CollisionData> 
         return None;
     }
     let sum_radius = a.radius + b.radius;
-    let sep = delta_dist.len() - sum_radius;
-    if sep < 0.0 {
+    let seperation = delta_dist.len() - sum_radius;
+    if seperation < 0.0 {
         let normal = delta_dist.normalize();
-        return Some(CollisionData(sep, normal));
+        return Some(CollisionData { seperation, normal, contacts: vec![] });
     }
 
     None
 }
 
+// With normal pointing towards segment
 pub fn collision_circle_segment(c: &Circle, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
     let ab = b - a;
     let ac = c.center - a;
@@ -130,16 +135,16 @@ pub fn collision_circle_segment(c: &Circle, a: Vector2f<f64>, b: Vector2f<f64>) 
     let cd = deepest_point - c.center;
     let dist_sq = cd.len_squared();
 
-    if dist_sq <= c.radius * c.radius {
-        let sep = f64::sqrt(dist_sq) - c.radius;
-        Some(CollisionData(sep, cd.normalize())) // With normal pointing towards segment
+    if dist_sq <= c.radius * c.radius { 
+        let seperation = f64::sqrt(dist_sq) - c.radius; 
+        Some(CollisionData { seperation, normal: cd.normalize(), contacts: vec![] }) 
     } else {
         None
     }
 }
 
 fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>>) -> Option<CollisionData> {
-    let mut result = CollisionData(f64::NEG_INFINITY, Vector2f::new(0.0, 0.0));
+    let mut result = CollisionData { seperation: f64::NEG_INFINITY, normal: Vector2f::zero(), contacts: vec![] };
     for i in 0..a_verts.len() {
         let edge = a_verts[i] - a_verts[(i + 1) % a_verts.len()];
         let normal = edge.perpendicular().normalize();
@@ -154,37 +159,39 @@ fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>
             return None;
         }
 
-        if min_sep > result.0 {
-            result = CollisionData(min_sep, normal);
+        if min_sep > result.seperation {
+            result.seperation = min_sep;
+            result.normal = normal;
         }
     }
 
     Some(result)
 }
 
-
+// normal always points towards b
 pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
     let a_verts = a.get_transformed_vertices();
     let b_verts = b.get_transformed_vertices();
     
     if let Some(a_res) = find_min_seperation(&a_verts, &b_verts) {
         if let Some(mut b_res) = find_min_seperation(&b_verts, &a_verts) {
-            b_res.1 = -b_res.1; // normal always points towards b
-            return if a_res.0 > b_res.0 { Some(a_res) } else { Some(b_res) };
+            b_res.normal = -b_res.normal; 
+            return if a_res.seperation > b_res.seperation { Some(a_res) } else { Some(b_res) };
         }
     }
 
     None
 }
 
+// normal always points towards the segment
 pub fn collision_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
     let poly_verts = p.get_transformed_vertices();
     let segment = vec![a, b];
 
     if let Some(poly_res) = find_min_seperation(&poly_verts, &segment) {
         if let Some(mut seg_res) = find_min_seperation(&segment, &poly_verts) {
-            seg_res.1 = -seg_res.1; // normal always points towards the segment
-            return if poly_res.0 > seg_res.0 { Some(poly_res) } else { Some(seg_res) };
+            seg_res.normal = -seg_res.normal; 
+            return if poly_res.seperation > seg_res.seperation { Some(poly_res) } else { Some(seg_res) };
         }
     }
 
@@ -193,7 +200,7 @@ pub fn collision_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -
 
 
 pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
-    let mut result = CollisionData(f64::NEG_INFINITY, Vector2f::new(0.0, 0.0));
+    let mut result = CollisionData { seperation: f64::NEG_INFINITY, normal: Vector2f::zero(), contacts: vec![] };
     let poly_verts = p.get_transformed_vertices();
     let mut closest_point = Vector2f::zero();
     let mut distance = f64::INFINITY;
@@ -207,8 +214,9 @@ pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
             return None
         }
 
-        if sep > result.0 {
-            result = CollisionData(sep, normal);
+        if sep > result.seperation {
+            result.seperation = sep;
+            result.normal = normal;
         }
 
         let (dist, cp) = point_segment_distance(c.center, a, b);
@@ -224,8 +232,9 @@ pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
         return None
     }
 
-    if sep > result.0 {
-        result = CollisionData(sep, normal);
+    if sep > result.seperation {
+        result.seperation = sep;
+        result.normal = normal;
     }
 
     Some(result)
