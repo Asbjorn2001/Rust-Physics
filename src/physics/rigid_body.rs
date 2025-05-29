@@ -122,7 +122,7 @@ impl RigidBody {
 
         let push_circle_out = |p: &mut Polygon, c: &mut Circle| {
             if p.contains_point(c.center) {
-                c.center = p.find_closest_point(c.center);
+                c.center = p.find_closest_surface_point(c.center).0;
             }
         };
 

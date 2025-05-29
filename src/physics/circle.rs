@@ -54,7 +54,10 @@ impl Circle {
         }
     }
 
-    pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
-        self.center + (point - self.center).normalize() * self.radius
+    // Returns closest surface point and surface normal
+    pub fn find_closest_surface_point(&self, point: Vector2f<f64>) -> (Vector2f<f64>, Vector2f<f64>) {
+        let cp = self.center + (point - self.center).normalize() * self.radius;
+        let normal = (cp - self.center).normalize();
+        (cp, normal)
     }
 }

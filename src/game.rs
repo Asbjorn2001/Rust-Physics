@@ -170,22 +170,22 @@ impl Default for Game {
 
         let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), STEEL, false);
         let head_ref = Rc::new(RefCell::new(head.clone()));
-        let head_att = Attachment { obj_ref: head_ref.clone(), rel_pos: head.shape.find_closest_point(string1.joints[0].position) - head.shape.get_center()};
+        let head_att = Attachment { obj_ref: head_ref.clone(), rel_pos: head.shape.find_closest_surface_point(string1.joints[0].position).0 - head.shape.get_center()};
         string1.joints[0].attachment = Some(head_att);
 
         let tail = RigidBody::from(Polygon::new_regular_polygon(5, 25.0, Vector2f::new(640.0, 500.0), color::GRAY));
         let tail_ref = Rc::new(RefCell::new(tail.clone()));
-        let tail_att = Attachment { obj_ref: tail_ref.clone(), rel_pos: tail.shape.find_closest_point(string1.joints.last().unwrap().position) - tail.shape.get_center() };
+        let tail_att = Attachment { obj_ref: tail_ref.clone(), rel_pos: tail.shape.find_closest_surface_point(string1.joints.last().unwrap().position).0 - tail.shape.get_center() };
         string1.joints.last_mut().unwrap().attachment = Some(tail_att);
 
         let mut string2 = StringBody::new(Vector2f::new(640.0, 680.0), 40);
         
-        let floor_att = Attachment { obj_ref: floor_ref.clone(), rel_pos: floor.shape.find_closest_point(string2.joints[0].position) - floor.shape.get_center() };
+        let floor_att = Attachment { obj_ref: floor_ref.clone(), rel_pos: floor.shape.find_closest_surface_point(string2.joints[0].position).0 - floor.shape.get_center() };
         string2.joints[0].attachment = Some(floor_att);
 
         let floor_body = RigidBody::from(Polygon::new_square(Vector2f::new(640.0, 1100.0), 50.0, color::GRAY));
         let floor_body_ref = Rc::new(RefCell::new(floor_body.clone()));
-        let floor_body_att = Attachment { obj_ref: floor_body_ref.clone(), rel_pos: floor_body.shape.find_closest_point(string2.joints.last().unwrap().position) - floor_body.shape.get_center() };
+        let floor_body_att = Attachment { obj_ref: floor_body_ref.clone(), rel_pos: floor_body.shape.find_closest_surface_point(string2.joints.last().unwrap().position).0 - floor_body.shape.get_center() };
         string2.joints.last_mut().unwrap().attachment = Some(floor_body_att);
 
         Self { 

@@ -132,8 +132,10 @@ impl Polygon {
         self.local_vertices.iter().map(|v| v.rotate(self.rotation) + self.center).collect()
     }
 
-    pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
+    // Returns closest surface point and surface normal
+    pub fn find_closest_surface_point(&self, point: Vector2f<f64>) -> (Vector2f<f64>, Vector2f<f64>) {
         let verts = self.get_transformed_vertices();
+        let mut edge = Vector2f::zero();
         let mut closest_point = Vector2f::zero();
         let mut distance = f64::INFINITY;
         for i in 0..verts.len() {
@@ -144,10 +146,11 @@ impl Polygon {
             if dist < distance {
                 closest_point = cp;
                 distance = dist;
+                edge = a - b;
             }
         }
 
-        closest_point
+        (closest_point, edge.perpendicular().normalize())
     }
 
     pub fn get_aabb(&self) -> AABB {

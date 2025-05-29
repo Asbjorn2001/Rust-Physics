@@ -109,24 +109,36 @@ impl StringBody {
 
     fn damp_velocities(&mut self) {
         let damping = 0.1;
+        let mut joints_and_masses = vec![];
+        for joint in self.joints.as_mut_slice() {
+            let mass = if let Some(att) = &joint.attachment {
+                let obj = att.obj_ref.borrow();
+                obj.shape.area() * obj.material.density
+            } else {
+                joint.mass
+            };
+            joints_and_masses.push((joint, mass));
+        }
+
         let mut total_mass = 0.0;
         let mut cm_pos = Vector2f::zero();
         let mut cm_vel = Vector2f::zero();
-        for joint in self.joints.as_slice() {
-            total_mass += joint.mass;
-            cm_pos += joint.position * joint.mass;
-            cm_vel += joint.velocity * joint.mass;
+        for (joint, mass) in joints_and_masses.as_slice() {
+            total_mass += mass;
+            cm_pos += joint.position * *mass;
+            cm_vel += joint.velocity * *mass;
         }
         cm_pos /= total_mass;
         cm_vel /= total_mass;
 
         let mut angular_momentum = 0.0;
         let mut inertia = 0.0;
-        for joint in self.joints.as_mut_slice() {
+        for (joint, mass) in joints_and_masses {
             let r = joint.position - cm_pos;
-            angular_momentum += r.cross(joint.velocity * joint.mass);
-            inertia += r.dot(r) * joint.mass;
+            angular_momentum += r.cross(joint.velocity * mass);
+            inertia += r.dot(r) * mass;
         }
+
         let angular_velocity = angular_momentum / inertia;
         for joint in self.joints.as_mut_slice() {
             let r = joint.position - cm_pos;
@@ -313,12 +325,53 @@ impl StringBody {
         for obj_ref in objects {
             let obj = obj_ref.borrow_mut();
             let obj_step = obj.linear_velocity * dt;
-            let step_len = obj_step.len();
+            let mut indices = vec![];
+
+            for constraint in self.constraints.as_slice() {
+                let (a, b) = (&self.joints[constraint.index_a], &self.joints[constraint.index_b]);
+                if let Some(att) = &a.attachment {
+                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
+                        continue;
+                    }
+                } 
+                if let Some(att) = &b.attachment {
+                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
+                        continue;
+                    }
+                } 
+
+                let collision = match &obj.shape {
+                    ShapeType::Circle(c) => {
+                        swept_circle_vs_segment(c, obj_step, a.position, b.position).or(
+                        circle_vs_segment(c, a.predicted_position, b.predicted_position))                 
+                    }
+                    ShapeType::Polygon(p) => {
+                        swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position).or(
+                        polygon_vs_segment(p, a.predicted_position, b.predicted_position))
+                    } 
+                };
+
+                if let Some(collision) = collision {
+                    let joints = vec![constraint.index_a, constraint.index_b];
+                    indices.extend(joints.clone());
+                    for cp in collision.contacts {
+                        for joint in joints.as_slice() {
+                            constraints.push(CollisionConstraint {
+                                index: *joint,
+                                contact_point: cp,
+                                normal: collision.normal,
+                                object: obj_ref.clone(),
+                            });
+                        }
+                    }
+                }
+            } 
             
             for (i, joint) in self.joints.iter_mut().enumerate() {
-
-                //let next_joint = self.joints.get_mut(i + 1);
-
+                if indices.contains(&i) {
+                    continue;
+                }
+                
                 if let Some(att) = &joint.attachment {
                     if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
                         continue;
@@ -326,10 +379,10 @@ impl StringBody {
                 } 
                 
                 let ray_origin = joint.position;
-                let collision = if obj.shape.contains_point(ray_origin) {        
-                    let contact = obj.shape.find_closest_point(joint.predicted_position) + obj_step;
-                    let center_contact = contact - obj.shape.get_center() + obj_step;
-                    Some(CollisionData { sep_or_t: (center_contact).len(), normal: center_contact.normalize(), contacts: vec![contact] })
+                let collision = if obj.shape.contains_point(ray_origin) {     
+                    let (cp, normal) = obj.shape.find_closest_surface_point(joint.predicted_position);   
+                    let c_cp = cp - obj.shape.get_center();
+                    Some(CollisionData { sep_or_t: (c_cp).len(), normal: normal, contacts: vec![cp + obj_step] })
                 } else {
                     let ray_dir = joint.predicted_position - joint.position - obj_step;
                     match &obj.shape {
@@ -347,55 +400,6 @@ impl StringBody {
                     });
                 }
             }
-
-            for constraint in self.constraints.as_slice() {
-                let (a, b) = (&self.joints[constraint.index_a], &self.joints[constraint.index_b]);
-                if let Some(att) = &a.attachment {
-                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
-                        continue;
-                    }
-                } 
-                if let Some(att) = &b.attachment {
-                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
-                        continue;
-                    }
-                } 
-
-                let collision = match &obj.shape {
-                    ShapeType::Circle(c) => {
-                        if step_len > c.radius {
-                            swept_circle_vs_segment(c, obj_step, a.position, b.position).or(
-                            circle_vs_segment(c, a.predicted_position, b.predicted_position))
-                        } else {
-                            circle_vs_segment(c, a.predicted_position, b.predicted_position)
-                        }                   
-                    }
-                    ShapeType::Polygon(p) => {
-                        let aabb = p.get_aabb();
-                        let min_width = (aabb.bottom_right.x - aabb.top_left.x).min(aabb.bottom_right.y - aabb.top_left.y); 
-                        if step_len > min_width / 2.0 {
-                            swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position).or(
-                            polygon_vs_segment(p, a.predicted_position, b.predicted_position))
-                        } else {
-                            polygon_vs_segment(p, a.predicted_position, b.predicted_position)
-                        }
-                    } 
-                };
-
-                if let Some(collision) = collision {
-                    let joints = vec![constraint.index_a, constraint.index_b];
-                    for cp in collision.contacts {
-                        for joint in joints.as_slice() {
-                            constraints.push(CollisionConstraint {
-                                index: *joint,
-                                contact_point: cp,
-                                normal: collision.normal,
-                                object: obj_ref.clone(),
-                            });
-                        }
-                    }
-                }
-            } 
         }
         
         constraints
