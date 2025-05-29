@@ -280,7 +280,7 @@ pub fn ray_vs_circle(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, c: &Circ
     if let Some(t) = ray_intersect_circle(ray_origin, ray_dir, c.center, c.radius) {
         if t <= 1.0 {
             let cp = ray_origin + ray_dir * t;
-            let normal = -ray_dir.normalize();
+            let normal = (cp - c.center).normalize();
             Some(CollisionData { sep_or_t: t, normal, contacts: vec![cp] })
         } else {
             None
@@ -404,16 +404,35 @@ fn ray_intersect_segment(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, p1: 
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct AABB {
     pub top_left: Vector2f<f64>,
     pub bottom_right: Vector2f<f64>
 }
 
-pub fn aabb_overlap(box1: &AABB, box2: &AABB) -> bool {
-    box1.top_left.x < box2.bottom_right.x &&
-    box1.bottom_right.x > box2.top_left.x &&
-    box1.top_left.y < box2.bottom_right.y &&
-    box1.bottom_right.y > box2.top_left.y
+impl AABB {
+    pub fn overlap(&self, other: &AABB) -> bool {
+        self.top_left.x < other.bottom_right.x &&
+        self.bottom_right.x > other.top_left.x &&
+        self.top_left.y < other.bottom_right.y &&
+        self.bottom_right.y > other.top_left.y
+    }
+
+    pub fn expand_by(&self, v: Vector2f<f64>) -> AABB {
+        let mut aabb = self.clone();
+        if v.x > 0.0 {
+            aabb.bottom_right.x += v.x;
+        }  else {
+            aabb.top_left.x += v.x;
+        }
+        if v.y > 0.0 {
+            aabb.bottom_right.y += v.y;
+        } else {
+            aabb.top_left.y += v.y;
+        }
+
+        aabb
+    }
 }
 
 pub fn ray_intersects_aabb(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, aabb: &AABB) -> Option<f64> {

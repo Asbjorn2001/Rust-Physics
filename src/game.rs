@@ -269,7 +269,7 @@ impl Game {
                 let (a, b) = get_pair_mut(&mut self.bodies, i, j);
                 let mut a = a.borrow_mut();
                 let mut b = b.borrow_mut();
-                if let Some(collision) = a.collide_with(&mut b) {
+                if let Some(collision) = a.collide_with(&mut b, self.dt) {
                     self.contacts.extend(collision.contacts.iter().map(|&contact| ContactDebug { contact, normal: collision.normal}));
                     collisions.push((i, j, collision));
                 }

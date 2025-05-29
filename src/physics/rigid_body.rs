@@ -1,5 +1,5 @@
 use core::f64;
-use std::vec;
+use std::{mem, vec};
 use graphics::math::Matrix2d;
 use graphics::{color, ellipse, line, triangulation, Context, ImageSize, Rectangle, Transformed};
 use opengl_graphics::{GlGraphics, Texture};
@@ -103,7 +103,57 @@ impl RigidBody {
         self.shape.rotate(self.angular_velocity * dt); 
     }
 
-    pub fn collide_with(&mut self, other: &mut RigidBody) -> Option<CollisionData> {
+    pub fn collide_with(&mut self, other: &mut RigidBody, dt: f64) -> Option<CollisionData> {
+        let aabb1 = self.shape.get_aabb();
+        let aabb2 = other.shape.get_aabb();
+        let rel_vel = (self.linear_velocity - other.linear_velocity) * dt;
+        let rel_pos = other.shape.get_center() - self.shape.get_center();
+
+        if aabb1.overlap(&aabb2) {
+            self.geometric_collision(other).or_else(|| {
+                if rel_vel.dot(rel_pos) > 0.0 {
+                    self.ray_collision(other, dt)
+                } else {
+                    None
+                }
+            })
+        } else {
+            if aabb1.expand_by(rel_vel).overlap(&aabb2) && rel_vel.dot(rel_pos) > 0.0  {
+                self.ray_collision(other, dt)
+            } else {
+                None
+            }
+        }
+    }
+
+    fn ray_collision(&mut self, other: &mut RigidBody, dt: f64) -> Option<CollisionData> {
+        let (a, b) = if self.linear_velocity.len_squared() > other.linear_velocity.len_squared() {
+            (self, other)
+        } else {
+            (other, self)
+        };
+
+        let ray_origin = a.shape.get_center();
+        let ray_dir = (a.linear_velocity - b.linear_velocity) * dt;
+        
+        if let Some(collision) = match &b.shape {
+            ShapeType::Circle(c) => ray_vs_circle(ray_origin, ray_dir, c),
+            ShapeType::Polygon(p) => ray_vs_polygon(ray_origin, ray_dir, p),
+        } {
+            let time = collision.sep_or_t * dt - f64::EPSILON;
+            
+            a.shape.translate(a.linear_velocity * time);
+            a.shape.rotate(a.angular_velocity * time);
+
+            b.shape.translate(b.linear_velocity * time);
+            b.shape.rotate(b.angular_velocity * time);
+
+            return b.geometric_collision(a);
+        }
+        None
+    }
+
+    fn geometric_collision(&mut self, other: &mut RigidBody) -> Option<CollisionData> {
         let push_out = 
         |data: CollisionData, a: &mut RigidBody, b: &mut RigidBody| -> Option<CollisionData> {
             let sep = data.sep_or_t - f64::EPSILON;

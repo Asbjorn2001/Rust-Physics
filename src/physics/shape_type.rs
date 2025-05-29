@@ -7,6 +7,8 @@ use crate::physics::polygon::Polygon;
 use crate::GlGraphics;
 use crate::physics::shape::Shape;
 
+use super::collision::AABB;
+
 #[derive(Clone)]
 pub enum ShapeType {
     Circle(Circle),
@@ -117,6 +119,13 @@ impl ShapeType {
         match self {
             ShapeType::Circle(c) => c.find_closest_surface_point(point),
             ShapeType::Polygon(p) => p.find_closest_surface_point(point),
+        }
+    }
+
+    pub fn get_aabb(&self) -> AABB {
+        match self {
+            ShapeType::Circle(c) => c.get_aabb(),
+            ShapeType::Polygon(p) => p.get_aabb(),
         }
     }
 }

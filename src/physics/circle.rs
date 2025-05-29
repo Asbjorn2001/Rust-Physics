@@ -9,6 +9,8 @@ use crate::physics::shape::Renderable;
 use crate::GlGraphics;
 use crate::physics::shape::Shape;
 
+use super::collision::AABB;
+
 #[derive(Clone, Copy)]
 pub struct Circle {
     pub radius: f64,
@@ -59,5 +61,10 @@ impl Circle {
         let cp = self.center + (point - self.center).normalize() * self.radius;
         let normal = (cp - self.center).normalize();
         (cp, normal)
+    }
+
+    pub fn get_aabb(&self) -> AABB {
+        let dims = Vector2f::new(self.radius, self.radius);
+        AABB { top_left: self.center - dims, bottom_right: self.center + dims}
     }
 }
