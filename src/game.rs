@@ -1,5 +1,6 @@
 pub mod game_controller;
 pub mod game_view;
+pub mod benchmarks;
 
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -8,7 +9,9 @@ use std::collections::VecDeque;
 use std::mem::transmute;
 use std::path::Path;
 use std::rc::Rc;
+use std::time::Instant;
 
+use benchmarks::BenchmarkTests;
 use graphics::math::scale;
 use graphics::math::translate;
 use graphics::math::Matrix2d;
@@ -119,6 +122,7 @@ pub struct Game {
     pub camera_transform: Matrix2d,
     pub strings: Vec<Rc<RefCell<StringBody>>>,
     pub dt: f64,
+    pub benchmarks: BenchmarkTests,
 }
 
 impl Default for Game {
@@ -200,6 +204,7 @@ impl Default for Game {
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             strings: vec![Rc::new(RefCell::new(string1)), Rc::new(RefCell::new(string2))],
             dt: 1.0 / 60.0,
+            benchmarks: BenchmarkTests::default(),
         }
     }
 }
@@ -254,6 +259,7 @@ impl Game {
     }
 
     pub fn update(&mut self, dt: f64) {
+        self.benchmarks.updating.start();
         self.contacts.clear();
         self.dt = dt;
 
@@ -263,6 +269,7 @@ impl Game {
         }
 
         // Detect body on body collisions and push out
+        self.benchmarks.rigid_collision_detection.start();
         let mut collisions = vec![];
         for i in 0..self.bodies.len() {
             for j in (i+1)..self.bodies.len() {
@@ -275,8 +282,10 @@ impl Game {
                 }
             }
         }
+        self.benchmarks.rigid_collision_detection.stop(Some(self.bodies.len()));
 
         // Resolve collisions
+        self.benchmarks.rigid_collision_solving.start();
         let mut rng = rand::rng();
         for _ in 0..PHYSICS_ITERATIONS {
             collisions.shuffle(&mut rng);
@@ -287,19 +296,27 @@ impl Game {
                 a.resolve_collision(&mut b, collision);
             }
         }    
+        self.benchmarks.rigid_collision_solving.stop(Some(collisions.len()));
 
         // Resolve constraints with verlet integration
         let mut new_strings = vec![];
         for string in self.strings.as_slice() {
             let mut string = string.borrow_mut();
-            if let Some(new_string) = string.resolve_constraints(self.dt, &self.settings.physics, &self.bodies, &mut self.contacts) {
+            if let Some(new_string) = string.resolve_constraints(
+                self.dt, 
+                &self.settings.physics, 
+                &self.bodies, 
+                &mut self.contacts, 
+                &mut self.benchmarks
+            ) {
                 new_strings.push(Rc::new(RefCell::new(new_string)));
             }
         }
-        self.strings.extend(new_strings);    
+        self.strings.extend(new_strings);  
 
         for obj_ref in self.bodies.as_mut_slice() {
             obj_ref.borrow_mut().update_position(self.dt);
         }
+        self.benchmarks.updating.stop(None);
     }
 }

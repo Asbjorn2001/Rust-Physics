@@ -4,7 +4,8 @@ use std::{cell::{Ref, RefCell}, f32::EPSILON, rc::Rc};
 use graphics::{ellipse, line, math::Matrix2d, rectangle::square, Context};
 use opengl_graphics::GlGraphics;
 use graphics::color;
-use crate::{game::{ContactDebug, Game, PhysicsSettings}, Vector2f};
+use rand::rand_core::le;
+use crate::{game::{benchmarks::BenchmarkTests, ContactDebug, Game, PhysicsSettings}, Vector2f};
 use crate::utils::helpers::*;
 use super::collision::{self, *};
 use super::{rigid_body::RigidBody, shape::Shape, shape_type::ShapeType};
@@ -148,7 +149,15 @@ impl StringBody {
 
     }
 
-    pub fn resolve_constraints(&mut self, dt: f64, physics: &PhysicsSettings, objects: &Vec<Rc<RefCell<RigidBody>>>, contacts: &mut Vec<ContactDebug>) -> Option<StringBody> {
+    pub fn resolve_constraints(
+        &mut self, 
+        dt: f64, 
+        physics: &PhysicsSettings, 
+        objects: &Vec<Rc<RefCell<RigidBody>>>, 
+        contacts: &mut Vec<ContactDebug>,
+        benchmarks: &mut BenchmarkTests,
+    ) -> Option<StringBody> 
+        {
         for joint in self.joints.as_mut_slice() {
             if let Some(att) = &joint.attachment {
                 joint.position = att.get_att_point();
@@ -165,11 +174,14 @@ impl StringBody {
             joint.predicted_position = joint.position + joint.velocity * dt;
         }
 
+        benchmarks.string_constraint_detection.start();
         let collision_constraints = self.generate_collision_constraints(dt, objects);
+        benchmarks.string_constraint_detection.stop(Some(self.joints.len()));
         for c in collision_constraints.as_slice() {
             contacts.push(ContactDebug { contact: c.contact_point, normal: c.normal });
         }
 
+        benchmarks.string_constraint_solving.start();
         for _ in 0..CONSTRAINT_ITERATIONS {
             let mut tear_index = None;
             for (i, constraint) in self.constraints.iter().enumerate() {
@@ -231,6 +243,7 @@ impl StringBody {
         }
 
         self.resolve_collisions(&collision_constraints);
+        benchmarks.string_constraint_solving.stop(Some(self.constraints.len() + collision_constraints.len()));
 
         None
     }
@@ -325,20 +338,35 @@ impl StringBody {
         for obj_ref in objects {
             let obj = obj_ref.borrow_mut();
             let obj_step = obj.linear_velocity * dt;
-            let mut indices = vec![];
+
+            let att_is_obj = |joint: &StringJoint| -> bool {
+                if let Some(att) = &joint.attachment {
+                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
+                        return true;
+                    }
+                }
+                false
+            };
+
+            let aabb = obj.shape.get_aabb();
+            let mut indices_to_skip = vec![];
+            for (i, joint) in self.joints.iter().enumerate() {
+                let rel_vel = joint.velocity - obj.linear_velocity;
+                if !aabb.expand_by(rel_vel).contains_point(joint.position) {
+                    indices_to_skip.push(i);
+                }
+            }
 
             for constraint in self.constraints.as_slice() {
-                let (a, b) = (&self.joints[constraint.index_a], &self.joints[constraint.index_b]);
-                if let Some(att) = &a.attachment {
-                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
-                        continue;
-                    }
-                } 
-                if let Some(att) = &b.attachment {
-                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
-                        continue;
-                    }
-                } 
+                let (i, j) = (constraint.index_a, constraint.index_b);
+                if indices_to_skip.contains(&i) && indices_to_skip.contains(&j) {
+                    continue;
+                }
+
+                let (a, b) = (&self.joints[i], &self.joints[j]);
+                if att_is_obj(a) || att_is_obj(b) {
+                    continue;
+                }
 
                 let collision = match &obj.shape {
                     ShapeType::Circle(c) => {
@@ -352,8 +380,8 @@ impl StringBody {
                 };
 
                 if let Some(collision) = collision {
-                    let joints = vec![constraint.index_a, constraint.index_b];
-                    indices.extend(joints.clone());
+                    let joints = vec![i, j];
+                    indices_to_skip.extend(joints.clone());
                     for cp in collision.contacts {
                         for joint in joints.as_slice() {
                             constraints.push(CollisionConstraint {
@@ -368,15 +396,9 @@ impl StringBody {
             } 
             
             for (i, joint) in self.joints.iter_mut().enumerate() {
-                if indices.contains(&i) {
+                if indices_to_skip.contains(&i) || att_is_obj(&joint) {
                     continue;
                 }
-                
-                if let Some(att) = &joint.attachment {
-                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
-                        continue;
-                    }
-                } 
                 
                 let ray_origin = joint.position;
                 let collision = if obj.shape.contains_point(ray_origin) {     

@@ -433,6 +433,11 @@ impl AABB {
 
         aabb
     }
+
+    pub fn contains_point(&self, p: Vector2f<f64>) -> bool {
+        p.x >= self.top_left.x && p.x <= self.bottom_right.x &&
+        p.y >= self.top_left.y && p.y <= self.bottom_right.y
+    }
 }
 
 pub fn ray_intersects_aabb(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, aabb: &AABB) -> Option<f64> {
