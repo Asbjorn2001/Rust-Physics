@@ -46,6 +46,7 @@ pub struct GameSettings {
     pub view: ViewSettings,
     pub physics: PhysicsSettings,
     pub enable_launch: bool,
+    pub debug_mode: bool,
 }
 
 impl Default for GameSettings {
@@ -55,6 +56,7 @@ impl Default for GameSettings {
             view: ViewSettings::default(),
             physics: PhysicsSettings::default(), 
             enable_launch: true,
+            debug_mode: false,
         }
     }
 }
@@ -100,17 +102,23 @@ impl Default for PhysicsSettings {
     }
 }
 
+pub struct ContactDebug {
+    pub contact: Vector2f<f64>,
+    pub normal: Vector2f<f64>,
+}
+
 pub struct Game {
     pub settings: GameSettings,
     pub bodies: Vec<Rc<RefCell<RigidBody>>>,
     pub target: Option<Vector2f<f64>>,
     pub projectile: RigidBody,
     pub projectile_scale: f64,
-    pub contacts: Vec<Vector2f<f64>>,
+    pub contacts: Vec<ContactDebug>,
     pub textures: HashMap<MaterialName, Rc<Texture>>,
     pub context: Context,
     pub camera_transform: Matrix2d,
     pub strings: Vec<Rc<RefCell<StringBody>>>,
+    pub dt: f64,
 }
 
 impl Default for Game {
@@ -175,9 +183,14 @@ impl Default for Game {
         let floor_att = Attachment { obj_ref: floor_ref.clone(), rel_pos: floor.shape.find_closest_point(string2.joints[0].position) - floor.shape.get_center() };
         string2.joints[0].attachment = Some(floor_att);
 
+        let floor_body = RigidBody::from(Polygon::new_square(Vector2f::new(640.0, 1100.0), 50.0, color::GRAY));
+        let floor_body_ref = Rc::new(RefCell::new(floor_body.clone()));
+        let floor_body_att = Attachment { obj_ref: floor_body_ref.clone(), rel_pos: floor_body.shape.find_closest_point(string2.joints.last().unwrap().position) - floor_body.shape.get_center() };
+        string2.joints.last_mut().unwrap().attachment = Some(floor_body_att);
+
         Self { 
             settings: GameSettings::default(), 
-            bodies: vec![floor_ref, ramp1, ramp2, triangle, head_ref, tail_ref], 
+            bodies: vec![floor_ref, floor_body_ref, ramp1, ramp2, triangle, head_ref, tail_ref], 
             target: None, 
             projectile: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
             projectile_scale: 1.0, 
@@ -186,6 +199,7 @@ impl Default for Game {
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             strings: vec![Rc::new(RefCell::new(string1)), Rc::new(RefCell::new(string2))],
+            dt: 1.0 / 60.0,
         }
     }
 }
@@ -195,7 +209,16 @@ impl Game {
         graphics::clear(color::WHITE, gl);
 
         for string in self.strings.as_slice() {
-            string.borrow().draw(self.camera_transform, c, gl);
+            let string = string.borrow();
+            string.draw(self.camera_transform, c, gl);
+            if self.settings.debug_mode || self.settings.view.show_velocites {
+                for joint in string.joints.as_slice() {
+                    let start = joint.position;
+                    let end = start + joint.velocity * self.dt;
+                    let l = [start.x, start.y, end.x, end.y];
+                    graphics::line(color::CYAN, 1.0, l, self.camera_transform, gl);
+                }
+            }
         }
         for obj in self.bodies.as_slice() {
             let obj = obj.borrow();
@@ -203,18 +226,21 @@ impl Game {
             if self.settings.view.show_tiles {
                 obj.mesh.draw_tile_outline(self.camera_transform.trans_pos(obj.shape.get_center()).rot_rad(obj.shape.get_rotation()), gl);
             }
-            if self.settings.view.show_velocites {
-                let o = obj.shape.get_center();
-                let vel = obj.linear_velocity;
-                let l = [o.x, o.y, o.x + vel.x, o.y + vel.y];
+            if self.settings.view.show_velocites || self.settings.debug_mode {
+                let start = obj.shape.get_center();
+                let end = start + obj.linear_velocity * self.dt;
+                let l = [start.x, start.y, end.x, end.y];
                 graphics::line(color::CYAN, 1.0, l, self.camera_transform, gl);
             }
         }
 
-        if self.settings.view.show_contact_points {
-            for cp in self.contacts.as_slice() {
-                let square = graphics::rectangle::centered_square(cp.x, cp.y, 5.0);
+        if self.settings.view.show_contact_points || self.settings.debug_mode {
+            for cd in self.contacts.as_slice() {
+                let square = graphics::rectangle::centered_square(cd.contact.x, cd.contact.y, 5.0);
                 graphics::ellipse(color::YELLOW, square, self.camera_transform, gl);
+                let cn = cd.contact + cd.normal * 15.0;
+                let l = [cd.contact.x, cd.contact.y, cn.x, cn.y];
+                graphics::line(color::GREEN, 1.0, l, self.camera_transform, gl);
             }
         }
     }
@@ -227,12 +253,13 @@ impl Game {
                                 .trans_pos(-self.settings.camera.position);
     }
 
-    pub fn update(&mut self, args: &UpdateArgs) {
+    pub fn update(&mut self, dt: f64) {
         self.contacts.clear();
+        self.dt = dt;
 
         for obj in self.bodies.as_slice() {
             let mut obj = obj.borrow_mut();
-            obj.update_vectors(args.dt, &self.settings.physics);
+            obj.update_velocity(self.dt, &self.settings.physics);
         }
 
         // Detect body on body collisions and push out
@@ -243,7 +270,7 @@ impl Game {
                 let mut a = a.borrow_mut();
                 let mut b = b.borrow_mut();
                 if let Some(collision) = a.collide_with(&mut b) {
-                    self.contacts.extend(collision.contacts.clone());
+                    self.contacts.extend(collision.contacts.iter().map(|&contact| ContactDebug { contact, normal: collision.normal}));
                     collisions.push((i, j, collision));
                 }
             }
@@ -265,10 +292,14 @@ impl Game {
         let mut new_strings = vec![];
         for string in self.strings.as_slice() {
             let mut string = string.borrow_mut();
-            if let Some(new_string) = string.resolve_constraints(args.dt, &self.settings.physics, &self.bodies, &mut self.contacts) {
+            if let Some(new_string) = string.resolve_constraints(self.dt, &self.settings.physics, &self.bodies, &mut self.contacts) {
                 new_strings.push(Rc::new(RefCell::new(new_string)));
             }
         }
         self.strings.extend(new_strings);    
+
+        for obj_ref in self.bodies.as_mut_slice() {
+            obj_ref.borrow_mut().update_position(self.dt);
+        }
     }
 }

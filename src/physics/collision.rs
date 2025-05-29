@@ -1,4 +1,5 @@
 use core::f64;
+use std::num::NonZeroI16;
 use std::vec;
 
 use crate::utils::helpers::nearly_equal;
@@ -102,13 +103,13 @@ pub fn contact_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> 
 
 #[derive(Clone)]
 pub struct CollisionData {
-    pub seperation: f64,
+    pub sep_or_t: f64,
     pub normal: Vector2f<f64>,
     pub contacts: Vec<Vector2f<f64>>,
 }
 
 
-pub fn collision_circle_circle(a: &Circle, b: &Circle) -> Option<CollisionData> {
+pub fn circle_vs_circle(a: &Circle, b: &Circle) -> Option<CollisionData> {
     let delta_dist = b.center - a.center;
     if delta_dist.len() == 0.0 {
         return None;
@@ -117,14 +118,14 @@ pub fn collision_circle_circle(a: &Circle, b: &Circle) -> Option<CollisionData> 
     let seperation = delta_dist.len() - sum_radius;
     if seperation < 0.0 {
         let normal = delta_dist.normalize();
-        return Some(CollisionData { seperation, normal, contacts: vec![] });
+        return Some(CollisionData { sep_or_t: seperation, normal, contacts: vec![] });
     }
 
     None
 }
 
 // With normal pointing towards segment
-pub fn collision_circle_segment(c: &Circle, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
+pub fn circle_vs_segment(c: &Circle, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
     let ab = b - a;
     let ac = c.center - a;
 
@@ -137,14 +138,15 @@ pub fn collision_circle_segment(c: &Circle, a: Vector2f<f64>, b: Vector2f<f64>) 
 
     if dist_sq <= c.radius * c.radius { 
         let seperation = f64::sqrt(dist_sq) - c.radius; 
-        Some(CollisionData { seperation, normal: cd.normalize(), contacts: vec![] }) 
+        let normal = cd.normalize();
+        Some(CollisionData { sep_or_t: seperation, normal, contacts: vec![c.center + normal * c.radius] }) 
     } else {
         None
     }
 }
 
 fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>>) -> Option<CollisionData> {
-    let mut result = CollisionData { seperation: f64::NEG_INFINITY, normal: Vector2f::zero(), contacts: vec![] };
+    let mut result = CollisionData { sep_or_t: f64::NEG_INFINITY, normal: Vector2f::zero(), contacts: vec![] };
     for i in 0..a_verts.len() {
         let edge = a_verts[i] - a_verts[(i + 1) % a_verts.len()];
         let normal = edge.perpendicular().normalize();
@@ -159,8 +161,8 @@ fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>
             return None;
         }
 
-        if min_sep > result.seperation {
-            result.seperation = min_sep;
+        if min_sep > result.sep_or_t {
+            result.sep_or_t = min_sep;
             result.normal = normal;
         }
     }
@@ -169,14 +171,14 @@ fn find_min_seperation(a_verts: &Vec<Vector2f<f64>>, b_verts: &Vec<Vector2f<f64>
 }
 
 // normal always points towards b
-pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
+pub fn polygon_vs_polygon(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
     let a_verts = a.get_transformed_vertices();
     let b_verts = b.get_transformed_vertices();
     
     if let Some(a_res) = find_min_seperation(&a_verts, &b_verts) {
         if let Some(mut b_res) = find_min_seperation(&b_verts, &a_verts) {
             b_res.normal = -b_res.normal; 
-            return if a_res.seperation > b_res.seperation { Some(a_res) } else { Some(b_res) };
+            return if a_res.sep_or_t > b_res.sep_or_t { Some(a_res) } else { Some(b_res) };
         }
     }
 
@@ -184,23 +186,24 @@ pub fn collision_poly_poly(a: &Polygon, b: &Polygon) -> Option<CollisionData> {
 }
 
 // normal always points towards the segment
-pub fn collision_poly_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
+pub fn polygon_vs_segment(p: &Polygon, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
     let poly_verts = p.get_transformed_vertices();
     let segment = vec![a, b];
 
     if let Some(poly_res) = find_min_seperation(&poly_verts, &segment) {
         if let Some(mut seg_res) = find_min_seperation(&segment, &poly_verts) {
             seg_res.normal = -seg_res.normal; 
-            return if poly_res.seperation > seg_res.seperation { Some(poly_res) } else { Some(seg_res) };
+            let res = if poly_res.sep_or_t > seg_res.sep_or_t { poly_res } else { seg_res };
+            let contacts = contact_poly_segment(p, a, b);
+            return Some(CollisionData { contacts, ..res });
         }
     }
 
     None
 }
 
-
-pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
-    let mut result = CollisionData { seperation: f64::NEG_INFINITY, normal: Vector2f::zero(), contacts: vec![] };
+pub fn polygon_vs_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
+    let mut result = CollisionData { sep_or_t: f64::NEG_INFINITY, normal: Vector2f::zero(), contacts: vec![] };
     let poly_verts = p.get_transformed_vertices();
     let mut closest_point = Vector2f::zero();
     let mut distance = f64::INFINITY;
@@ -214,8 +217,8 @@ pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
             return None
         }
 
-        if sep > result.seperation {
-            result.seperation = sep;
+        if sep > result.sep_or_t {
+            result.sep_or_t = sep;
             result.normal = normal;
         }
 
@@ -232,10 +235,267 @@ pub fn collision_poly_circle(p: &Polygon, c: &Circle) -> Option<CollisionData> {
         return None
     }
 
-    if sep > result.seperation {
-        result.seperation = sep;
+    if sep > result.sep_or_t {
+        result.sep_or_t = sep;
         result.normal = normal;
     }
 
     Some(result)
+}
+
+// =======================
+// Ray collision detection
+// =======================
+
+pub fn ray_intersect_circle(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, center: Vector2f<f64>, radius: f64) -> Option<f64> {
+    let oc = ray_origin - center;
+
+    let a = ray_dir.dot(ray_dir);
+    let b = 2.0 * oc.dot(ray_dir);
+    let c = oc.dot(oc) - radius * radius;
+
+    let discriminant = b * b - 4.0 * a * c;
+
+    if discriminant < 0.0 {
+        None
+    } else {
+        let sqrt_disc = discriminant.sqrt();
+        let t1 = (-b - sqrt_disc) / (2.0 * a);
+        let t2 = (-b + sqrt_disc) / (2.0 * a);
+
+        // We're only interested in intersections in front of the ray origin (t >= 0)
+        let t = if t1 >= 0.0 {
+            t1
+        } else if t2 >= 0.0 {
+            t2
+        } else {
+            return None;
+        };
+
+        Some(t)
+    }
+}
+
+pub fn ray_vs_circle(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, c: &Circle) -> Option<CollisionData> {
+    if let Some(t) = ray_intersect_circle(ray_origin, ray_dir, c.center, c.radius) {
+        if t <= 1.0 {
+            let cp = ray_origin + ray_dir * t;
+            let normal = -ray_dir.normalize();
+            Some(CollisionData { sep_or_t: t, normal, contacts: vec![cp] })
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+/* pub fn swept_circle_vs_segment(center: Vector2f<f64>, radius: f64, step: Vector2f<f64>, seg_a: Vector2f<f64>, seg_b: Vector2f<f64>) -> Option<f64> {
+    let seg = seg_b - seg_a;
+    let seg_dir = seg.normalize();
+    let seg_normal = seg_dir.perpendicular();
+
+    // Project circle center onto segment normal to get side offset
+    let rel_pos = center - seg_a;
+    let dist_to_seg = rel_pos.dot(seg_normal);
+    let rel_vel = step.dot(seg_normal);
+
+    // Check if ray will approach the segment
+    if rel_vel.abs() < 1e-6 {
+        if dist_to_seg.abs() > radius {
+            return None; // moving parallel and outside
+        }
+    }
+
+    let t_wall = (radius - dist_to_seg) / rel_vel;
+    if t_wall >= 0.0 && t_wall <= 1.0 {
+        // Compute intersection point
+        let hit_point = center + step * t_wall;
+        let proj = (hit_point - seg_a).dot(seg_dir);
+        if proj >= 0.0 && proj <= seg.len() {
+            return Some(t_wall);
+        }
+    }
+
+    // If no wall hit, check capsule ends
+    let t1 = ray_intersects_circle(center, step, seg_a, radius);
+    let t2 = ray_intersects_circle(center, step, seg_b, radius);
+
+    let mut min_t = f64::INFINITY;
+    if let Some(t) = t1 {
+        if t >= 0.0 && t <= 1.0 {
+            min_t = t.min(min_t);
+        }
+    }
+    if let Some(t) = t2 {
+        if t >= 0.0 && t <= 1.0 {
+            min_t = t.min(min_t);
+        }
+    }
+
+    if min_t < f64::INFINITY {
+        Some(min_t)
+    } else {
+        None
+    }
+}
+ */
+
+pub fn ray_intersect_capsule(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f64>, radius: f64) -> Option<f64> {
+    let t1 = ray_intersect_circle(ray_origin, ray_dir, a, radius);
+    let t2 = ray_intersect_circle(ray_origin, ray_dir, b, radius);
+
+    let seg = b - a;
+    let normal = seg.perpendicular().normalize();
+    let d_proj = ray_dir.dot(normal);
+    if d_proj.abs() < 1e-6 {
+        return t1.or(t2);
+    }
+
+    let dist = (a - ray_origin).dot(normal);
+    let t_wall = (dist - radius) / d_proj;
+
+    if t_wall >= 0.0 {
+        let hit_point = ray_origin + ray_dir * t_wall;
+        let seg_len = seg.len();
+        let seg_proj = (hit_point - a).dot(seg / seg_len);
+        if seg_proj >= 0.0 && seg_proj <= seg_len {
+            return Some(t_wall.min(t1.unwrap_or(f64::INFINITY)).min(t2.unwrap_or(f64::INFINITY)));
+        }
+    }
+
+    t1.or(t2)
+}
+
+pub fn swept_circle_vs_segment(c: &Circle, step: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
+    if let Some(t) = ray_intersect_capsule(c.center, step, a, b, c.radius) {
+        if t <= 1.0 {
+            let mut normal = (a - b).perpendicular().normalize();
+            if step.dot(normal) < 0.0 {
+                normal = -normal;
+            }
+            let contact = c.center + step + normal * c.radius;
+            Some(CollisionData { sep_or_t: t, normal: normal, contacts: vec![contact] })
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+pub fn swept_polygon_vs_segment(p: &Polygon, ray_dir: Vector2f<f64>, a: Vector2f<f64>, b: Vector2f<f64>) -> Option<CollisionData> {
+    let poly_verts = p.get_transformed_vertices();
+    let mut min_t = f64::INFINITY;
+    let mut corner = Vector2f::zero();
+    for vert in poly_verts {
+        if let Some(t) = ray_intersect_segment(vert, ray_dir, a, b) {
+            if t < min_t {
+                min_t = t;
+                corner = vert;
+            }
+        }
+    }
+
+    if min_t <= 1.0 {
+        let mut normal = (a - b).perpendicular().normalize();
+        if normal.dot(ray_dir) < 0.0 {
+            normal = -normal;
+        }
+
+        return Some(CollisionData { sep_or_t: min_t, normal, contacts: vec![corner + ray_dir] });
+    }
+
+    None
+}
+
+pub fn ray_vs_polygon(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, p: &Polygon) -> Option<CollisionData> {
+    let poly_verts = p.get_transformed_vertices();
+    let mut min_t = f64::INFINITY;
+    let n = poly_verts.len();
+    let mut normal = Vector2f::zero();
+
+    for i in 0..n {
+        let a = poly_verts[i];
+        let b = poly_verts[(i + 1) % n]; 
+
+        if let Some(t) = ray_intersect_segment(ray_origin, ray_dir, a, b) {
+            if t < min_t {
+                min_t = t;
+                normal = (a - b).perpendicular().normalize();
+            }
+        }
+    }
+
+    if min_t <= 1.0 {
+        Some(CollisionData { sep_or_t: min_t, normal, contacts: vec![ray_origin + ray_dir * min_t] })
+    } else {
+        None
+    }
+}
+
+// Helper: Ray vs Segment
+fn ray_intersect_segment(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, p1: Vector2f<f64>, p2: Vector2f<f64>) -> Option<f64> {
+    let v1 = ray_origin - p1;
+    let v2 = p2 - p1;
+    let v3 = ray_dir.perpendicular();
+
+    let dot = v2.dot(v3);
+    if dot.abs() < 1e-6 {
+        return None; // Parallel
+    }
+
+    let t1 = v2.cross(v1) / dot;
+    let t2 = v1.dot(v3) / dot;
+
+    if t1 >= 0.0 && t2 >= 0.0 && t2 <= 1.0 {
+        Some(t1)
+    } else {
+        None
+    }
+}
+
+
+
+pub struct AABB {
+    pub top_left: Vector2f<f64>,
+    pub bottom_right: Vector2f<f64>
+}
+
+pub fn aabb_overlap(box1: &AABB, box2: &AABB) -> bool {
+    box1.top_left.x < box2.bottom_right.x &&
+    box1.bottom_right.x > box2.top_left.x &&
+    box1.top_left.y < box2.bottom_right.y &&
+    box1.bottom_right.y > box2.top_left.y
+}
+
+pub fn ray_intersects_aabb(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, aabb: &AABB) -> Option<f64> {
+    let inv_dir = Vector2f::new(1.0 / ray_dir.x, 1.0 / ray_dir.y);
+
+    let mut txmin = (aabb.top_left.x - ray_origin.x) * inv_dir.x;
+    let mut txmax = (aabb.bottom_right.x - ray_origin.x) * inv_dir.x;
+
+    if inv_dir.x < 0.0 {
+        std::mem::swap(&mut txmin, &mut txmax);
+    }
+
+    let mut tymin = (aabb.top_left.y - ray_origin.y) * inv_dir.y;
+    let mut tymax = (aabb.bottom_right.y - ray_origin.y) * inv_dir.y;
+
+    if inv_dir.y < 0.0 {
+        std::mem::swap(&mut tymin, &mut tymax);
+    }
+
+    if (txmin > tymax) || (tymin > txmax) {
+        return None;
+    }
+
+    txmin = txmin.max(tymin);
+    txmax = txmax.min(tymax);
+
+    if txmax < 0.0 {
+        return None; // AABB is behind the ray
+    }
+
+    Some(txmin.max(0.0)) // Return distance to intersection
 }

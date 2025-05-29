@@ -26,9 +26,12 @@ impl GameController {
             self.cursor_pos = pos.into();
         }
 
-        if let Some(new_state) = self.state.update(self.cursor_pos, e, &mut self.game) {
-            self.state = new_state;
+        if !self.game.settings.debug_mode {
+            if let Some(new_state) = self.state.update(self.cursor_pos, e, &mut self.game) {
+                self.state = new_state;
+            }
         }
+        
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
@@ -38,6 +41,12 @@ impl GameController {
                 Key::Down => self.game.settings.camera.position.y += 50.0,
                 Key::Left => self.game.settings.camera.position.x -= 50.0,
                 Key::Right => self.game.settings.camera.position.x += 50.0,
+                Key::Space => {
+                    if self.game.settings.debug_mode {
+                        self.game.update(self.game.dt);
+                    }
+                }
+                Key::D => self.game.settings.debug_mode = !self.game.settings.debug_mode,
                 _ => {}
             }
         }

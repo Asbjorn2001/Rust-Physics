@@ -125,10 +125,8 @@ impl GameState for PlayingState {
         }
         
         // Update game logic
-        let mut dt = 1.0;
         if let Some(args) = e.update_args() {
-            dt = args.dt;
-            game.update(&args);
+            game.update(args.dt);
         }
 
         let dims = Vector2f::from(game.context.get_view_size());

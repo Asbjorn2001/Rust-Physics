@@ -1,3 +1,4 @@
+use core::f64;
 use std::f64::consts::PI;
 use graphics::math::Matrix2d;
 
@@ -5,6 +6,8 @@ use crate::Vector2f;
 use crate::physics::shape::Renderable;
 use crate::GlGraphics;
 use crate::physics::shape::Shape;
+
+use super::collision::AABB;
 
 #[derive(Clone)]
 pub struct Polygon {
@@ -129,22 +132,6 @@ impl Polygon {
         self.local_vertices.iter().map(|v| v.rotate(self.rotation) + self.center).collect()
     }
 
-    pub fn closest_vertex_to(&self, point: Vector2f<f64>) -> Vector2f<f64> {
-        let vertices = self.get_transformed_vertices();
-        let mut closest_vertex = vertices[0];
-        let mut distance = f64::INFINITY;
-        for i in 0..vertices.len() {
-            let cp = vertices[i];
-            let len = (cp - point).len();
-            if len < distance {
-                closest_vertex = cp;
-                distance = len;
-            }
-        }
-
-        closest_vertex
-    }
-
     pub fn find_closest_point(&self, point: Vector2f<f64>) -> Vector2f<f64> {
         let verts = self.get_transformed_vertices();
         let mut closest_point = Vector2f::zero();
@@ -163,7 +150,22 @@ impl Polygon {
         closest_point
     }
 
-    pub fn compute_center(vertices: &Vec<Vector2f<f64>>) -> Vector2f<f64> {
+    pub fn get_aabb(&self) -> AABB {
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY; 
+        for v in self.get_transformed_vertices() {
+            min_x = min_x.min(v.x);
+            max_x = max_x.max(v.x);
+            min_y = min_y.min(v.y);
+            max_y = max_y.max(v.y);
+        }
+
+        AABB { top_left: Vector2f::new(min_x, min_y), bottom_right: Vector2f::new(max_x, max_y) }
+    }
+
+    fn compute_center(vertices: &Vec<Vector2f<f64>>) -> Vector2f<f64> {
         let mut sum_center: Vector2f<f64> = Vector2f::zero();
         let mut sum_weight = 0.0;
         let n = vertices.len();

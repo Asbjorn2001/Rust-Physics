@@ -87,7 +87,7 @@ impl RigidBody {
         if self.is_static { 0.0 } else { 1.0 / (self.shape.momemnt_of_inertia() * self.material.density) }
     }
 
-    pub fn update_vectors(&mut self, dt: f64, physics: &PhysicsSettings) {
+    pub fn update_velocity(&mut self, dt: f64, physics: &PhysicsSettings) {
         if self.is_static {
             return;
         }
@@ -95,16 +95,18 @@ impl RigidBody {
         self.linear_velocity += physics.gravity * dt;        
         
         self.linear_velocity *= 1.0 - physics.air_density * dt;
-        self.angular_velocity *= 1.0 - physics.air_density * dt;   
+        self.angular_velocity *= 1.0 - physics.air_density * dt;       
+    }
 
+    pub fn update_position(&mut self, dt: f64) {
         self.shape.translate(self.linear_velocity * dt);  
-        self.shape.rotate(self.angular_velocity * dt);     
+        self.shape.rotate(self.angular_velocity * dt); 
     }
 
     pub fn collide_with(&mut self, other: &mut RigidBody) -> Option<CollisionData> {
         let push_out = 
         |data: CollisionData, a: &mut RigidBody, b: &mut RigidBody| -> Option<CollisionData> {
-            let sep = data.seperation - f64::EPSILON;
+            let sep = data.sep_or_t - f64::EPSILON;
             let normal = data.normal;
             match (a.is_static, b.is_static) {
                 (true, true) | (false, false) => {
@@ -127,25 +129,25 @@ impl RigidBody {
         let mut collision_data = None;
         match (&mut self.shape, &mut other.shape) {
             (ShapeType::Circle(a), ShapeType::Circle(b)) => {
-                if let Some(collision) = collision_circle_circle(&a, &b) {
+                if let Some(collision) = circle_vs_circle(&a, &b) {
                     collision_data = push_out(collision, self, other);
                 } 
             },
             (ShapeType::Circle(c), ShapeType::Polygon(p)) => {
                 push_circle_out(p, c);
-                if let Some(mut collision) = collision_poly_circle(&p, &c) {
+                if let Some(mut collision) = polygon_vs_circle(&p, &c) {
                     collision.normal = -collision.normal;
                     collision_data = push_out(collision, self, other);
                 }
             }
             (ShapeType::Polygon(p), ShapeType::Circle(c)) => {
                 push_circle_out(p, c);
-                if let Some(collision) = collision_poly_circle(&p, &c) {
+                if let Some(collision) = polygon_vs_circle(&p, &c) {
                     collision_data = push_out(collision, self, other);
                 }
             }
             (ShapeType::Polygon(a), ShapeType::Polygon(b)) => {
-                if let Some(collision) = collision_poly_poly(&a, &b) {
+                if let Some(collision) = polygon_vs_polygon(&a, &b) {
                     collision_data = push_out(collision, self, other);
                 }
             }   
