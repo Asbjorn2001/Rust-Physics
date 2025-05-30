@@ -70,7 +70,7 @@ impl From<&Game> for MainState {
         let mut button_position = Vector2f::new(540.0, 100.0);
         let button_size = Vector2f::new(200.0, 50.0);
 
-        let display = Display::new(rect, DisplayContent::Text((text, "Sandbox".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Sandbox".to_string()));
         let button1 = GUIButton::new(
             button_position, 
             button_size, 
@@ -87,7 +87,7 @@ impl From<&Game> for MainState {
         );
 
         button_position.y += 75.0;
-        let display = Display::new(rect, DisplayContent::Text((text, "Multiplayer".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Multiplayer".to_string()));
         let button2 = GUIButton::new(
             button_position, 
             button_size, 
@@ -104,7 +104,7 @@ impl From<&Game> for MainState {
         );
 
         button_position.y += 75.0;
-        let display = Display::new(rect, DisplayContent::Text((text, "Settings".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Settings".to_string()));
         let button3 = GUIButton::new(
             button_position, 
             button_size, 
@@ -122,7 +122,7 @@ impl From<&Game> for MainState {
 
         button_position.y += 75.0;
         rect.color = color::RED;
-        let display = Display::new(rect, DisplayContent::Text((text, "Quit".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Quit".to_string()));
         let button4 = GUIButton::new(
             button_position, 
             button_size, 

@@ -44,11 +44,28 @@ const PHYSICS_ITERATIONS: usize = 8;
 const MAX_SCALE: f64 = 10.0;
 const MIN_SCALE: f64 = 0.1;
 
+pub struct Projectile {
+    pub target: Option<Vector2f<f64>>,
+    pub body: RigidBody,
+    pub scale: f64,
+}
+
+pub struct StringStart {
+    pub position: Vector2f<f64>,
+    pub attachment: Option<Rc<RefCell<RigidBody>>>,
+}
+
+pub enum Utility {
+    Empty,
+    Launch,
+    String(Option<StringStart>),
+}
+
 pub struct GameSettings {
     pub camera: CameraSettings,
     pub view: ViewSettings,
     pub physics: PhysicsSettings,
-    pub enable_launch: bool,
+    pub utility: Utility,
     pub debug_mode: bool,
 }
 
@@ -58,7 +75,7 @@ impl Default for GameSettings {
             camera: CameraSettings::default(),
             view: ViewSettings::default(),
             physics: PhysicsSettings::default(), 
-            enable_launch: true,
+            utility: Utility::Launch,
             debug_mode: false,
         }
     }
@@ -113,9 +130,7 @@ pub struct ContactDebug {
 pub struct Game {
     pub settings: GameSettings,
     pub bodies: Vec<Rc<RefCell<RigidBody>>>,
-    pub target: Option<Vector2f<f64>>,
-    pub projectile: RigidBody,
-    pub projectile_scale: f64,
+    pub projectile: Projectile,
     pub contacts: Vec<ContactDebug>,
     pub textures: HashMap<MaterialName, Rc<Texture>>,
     pub context: Context,
@@ -170,7 +185,7 @@ impl Default for Game {
         tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("ice.png"), &tex_settings).unwrap()));
         tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
-        let mut string1 = StringBody::new(Vector2f::new(640.0, 300.0), 20);
+        let mut string1 = StringBody::new(Vector2f::new(640.0, 300.0), Vector2f::new(640.0, 500.0), 10);
 
         let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), STEEL, false);
         let head_ref = Rc::new(RefCell::new(head.clone()));
@@ -182,7 +197,7 @@ impl Default for Game {
         let tail_att = Attachment { obj_ref: tail_ref.clone(), rel_pos: tail.shape.find_closest_surface_point(string1.joints.last().unwrap().position).0 - tail.shape.get_center() };
         string1.joints.last_mut().unwrap().attachment = Some(tail_att);
 
-        let mut string2 = StringBody::new(Vector2f::new(640.0, 680.0), 40);
+        let mut string2 = StringBody::new(Vector2f::new(640.0, 680.0), Vector2f::new(640.0, 1000.0), 20);
         
         let floor_att = Attachment { obj_ref: floor_ref.clone(), rel_pos: floor.shape.find_closest_surface_point(string2.joints[0].position).0 - floor.shape.get_center() };
         string2.joints[0].attachment = Some(floor_att);
@@ -195,9 +210,11 @@ impl Default for Game {
         Self { 
             settings: GameSettings::default(), 
             bodies: vec![floor_ref, floor_body_ref, ramp1, ramp2, triangle, head_ref, tail_ref], 
-            target: None, 
-            projectile: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
-            projectile_scale: 1.0, 
+            projectile: Projectile { 
+                target: None, 
+                body: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
+                scale: 1.0 
+            },
             contacts: vec![], 
             textures: tex_map,
             context: Context::new(),

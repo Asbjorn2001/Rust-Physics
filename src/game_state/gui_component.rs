@@ -231,7 +231,7 @@ impl GUIComponent for GUIButton {
 
 #[derive(Clone)]
 pub enum DisplayContent {
-    Text((Text, String)),
+    Text(Text, String),
     Shape(ShapeType),
     Body(RigidBody, Rc<Texture>),
     Image(Rc<Texture>),
@@ -258,7 +258,7 @@ impl Display {
         self.rect.draw(rect, &c.draw_state, c.transform.trans_pos(position), gl);
 
         match &self.content {
-            DisplayContent::Text((text, str)) => {
+            DisplayContent::Text(text, str) => {
                 let text_width = glyphs.width(text.font_size, &str).unwrap_or(0.0);
                 let text_x = position.x + (size.x - text_width) / 2.0;
                 let text_y = position.y + (size.y + text.font_size as f64) / 2.0;

@@ -2,11 +2,17 @@ use core::f64;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::game;
+use crate::game::StringStart;
+use crate::game::Utility;
 use crate::physics::material::CONCRETE;
 use crate::physics::material::ICE;
 use crate::physics::material::STEEL;
 use crate::physics::material::WOOD;
 use crate::physics::rigid_body::RigidBody;
+use crate::physics::shape::Shape;
+use crate::physics::string_body::Attachment;
+use crate::physics::string_body::StringBody;
 use crate::physics::*;
 use crate::game_state::gui_component::*;
 use crate::Vector2f;
@@ -20,7 +26,9 @@ use crate::physics::shape_type::ShapeType;
 use super::pause_state::PauseState;
 use crate::Texture;
 use graphics::math::translate;
+use graphics::rectangle::square;
 use piston_window::*;
+use rand::rand_core::le;
 use vecmath::row_mat2x3_transform_pos2;
 use crate::game::Game;
 use crate::GlGraphics;
@@ -34,6 +42,8 @@ pub struct PlayingState {
     show_physics_menu: bool,
     material_menu: GUI,
     show_material_menu: bool,
+    utility_menu: GUI,
+    show_utility_menu: bool,
 }
 
 impl GameState for PlayingState {
@@ -54,14 +64,27 @@ impl GameState for PlayingState {
             self.material_menu.draw(glyphs, c, gl);
         }
 
-        if let Some(target) = game.target {
-            if game.settings.enable_launch {
-                let projectile_pos = game.projectile.shape.get_center();
-                let line = [projectile_pos.x, projectile_pos.y, target.x, target.y];
-                graphics::line(color::BLACK, 1.0, line, game.camera_transform, gl);
+        if self.show_utility_menu {
+            self.utility_menu.draw(glyphs, c, gl);
+        }
 
-                let projectile = RigidBody::new(game.projectile.shape.scale(game.projectile_scale), game.projectile.material, false);
-                projectile.draw(game.camera_transform, game.textures.get(&projectile.material.name).unwrap(), c, gl);
+        match &game.settings.utility {
+            game::Utility::Empty => {},
+            game::Utility::Launch => {
+                if let Some(target) = game.projectile.target {
+                    let projectile_pos = game.projectile.body.shape.get_center();
+                    let line = [projectile_pos.x, projectile_pos.y, target.x, target.y];
+                    graphics::line(color::BLACK, 1.0, line, game.camera_transform, gl);
+
+                    let projectile = RigidBody::new(game.projectile.body.shape.scale(game.projectile.scale), game.projectile.body.material, false);
+                    projectile.draw(game.camera_transform, game.textures.get(&projectile.material.name).unwrap(), c, gl);
+                }
+            }
+            game::Utility::String(string_start) => {
+                if let Some(start) = string_start {
+                    let square = square(start.position.x, start.position.y, 5.0);
+                    ellipse(color:: RED, square, game.camera_transform, gl);
+                }
             }
         }
     }   
@@ -79,6 +102,7 @@ impl GameState for PlayingState {
                     match event.as_str() {
                         "shape" => self.show_shape_menu = !self.show_shape_menu,
                         "material" => self.show_material_menu = !self.show_material_menu,
+                        "utility" => self.show_utility_menu = !self.show_utility_menu,
                         "physics" => self.show_physics_menu = !self.show_physics_menu,                        
                         _ => {}
                     }
@@ -89,39 +113,37 @@ impl GameState for PlayingState {
             }
         }
 
-        if self.show_shape_menu {
-            for component in self.shape_menu.components.as_mut_slice() {
+        let mut update_menu = |menu: &mut GUI, hide_on_click: bool| -> bool {
+            let mut show_menu = true;
+            for component in menu.components.as_mut_slice() {
                 let event = component.update(cursor_pos, e, game);
                 if !matches!(event, GUIEvent::None) {
                     interaction = true;
                 }
                 match event {
-                    GUIEvent::Click => self.show_shape_menu = false,
+                    GUIEvent::Click => if hide_on_click {
+                        show_menu = false;
+                    }
                     _ => {}
                 }
             }
+            show_menu
+        };
+
+        if self.show_shape_menu {
+            self.show_shape_menu = update_menu(&mut self.shape_menu, true);
         }
 
         if self.show_material_menu {
-            for component in self.material_menu.components.as_mut_slice() {
-                let event = component.update(cursor_pos, e, game);
-                if !matches!(event, GUIEvent::None) {
-                    interaction = true;
-                }
-                match event {
-                    GUIEvent::Click => self.show_material_menu = false,
-                    _ => {}
-                }
-            }
+            self.show_material_menu = update_menu(&mut self.material_menu, true);
+        }
+
+        if self.show_utility_menu {
+            self.show_utility_menu = update_menu(&mut self.utility_menu, true);
         }
 
         if self.show_physics_menu {
-            for component in self.physics_menu.components.as_mut_slice() {
-                let event = component.update(cursor_pos, e, game);
-                if !matches!(event, GUIEvent::None) {
-                    interaction = true;
-                }
-            }
+            self.show_physics_menu = update_menu(&mut self.physics_menu, false);
         }
         
         // Update game logic
@@ -136,27 +158,75 @@ impl GameState for PlayingState {
 
         // Set target on press
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-            if game.settings.enable_launch && !interaction {
-                game.target = Some(cursor_world_position.into());
-            } 
+            match &mut game.settings.utility {
+                game::Utility::Empty => {},
+                game::Utility::Launch => if !interaction {
+                    game.projectile.target = Some(cursor_world_position.into())
+                },
+                game::Utility::String(string_start) => if !interaction {
+                    if let Some(start) = string_start {
+                        let mut end_position = cursor_world_position;
+                        let mut end_attachment = None;
+                        for obj_ref in game.bodies.as_slice() {
+                            let obj = obj_ref.borrow();
+                            if obj.shape.contains_point(end_position) {
+                                end_position = obj.shape.find_closest_surface_point(end_position).0;
+                                end_attachment = Some(obj_ref);
+                                break;
+                            } 
+                        }
+
+                        let len = (end_position - start.position).len();
+                        let mut string = StringBody::new(start.position, end_position, len as usize / 10);
+                        if let Some(obj_ref) = &start.attachment {
+                            let rel_pos = start.position - obj_ref.borrow().shape.get_center();
+                            string.joints[0].attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
+                        }
+
+                        if let Some(obj_ref) = end_attachment {
+                            let rel_pos = end_position - obj_ref.borrow().shape.get_center();
+                            string.joints.last_mut().unwrap().attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
+                        }
+
+                        game.strings.push(Rc::new(RefCell::new(string)));
+                        *string_start = None;
+                    } else {
+                        let mut start_position = cursor_world_position;
+                        let mut start_attachment = None;
+                        for obj_ref in game.bodies.as_slice() {
+                            let obj = obj_ref.borrow();
+                            if obj.shape.contains_point(start_position) {
+                                start_position = obj.shape.find_closest_surface_point(start_position).0;
+                                start_attachment = Some(obj_ref.clone());
+                                break;
+                            }
+                        }
+                        *string_start = Some(StringStart { position: start_position, attachment: start_attachment })
+                    }
+                }
+            }
         }
 
         // Launch on release
-        if let Some(target) = game.target {
-            game.projectile.shape.set_center(cursor_world_position);
-            if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
-                let velocity = (target - cursor_world_position) * 2.0;
+        if let Some(_) = game.projectile.target {
+            game.projectile.body.shape.set_center(cursor_world_position);
+        }
 
-                let shape = game.projectile.shape.scale(game.projectile_scale);
-                let mut body = RigidBody::new(shape, game.projectile.material, false);
-                body.linear_velocity = velocity;
-                game.bodies.push(Rc::new(RefCell::new(body)));
-
-                game.target = None;
+        if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
+            match &game.settings.utility {
+                game::Utility::Empty => {},
+                game::Utility::Launch => {
+                    if let Some(target) = game.projectile.target {
+                        let velocity = (target - cursor_world_position) * 2.0;
+                        let shape = game.projectile.body.shape.scale(game.projectile.scale);
+                        let mut body = RigidBody::new(shape, game.projectile.body.material, false);
+                        body.linear_velocity = velocity;
+                        game.bodies.push(Rc::new(RefCell::new(body)));
+                        game.projectile.target = None;                            
+                    }
+                },
+                game::Utility::String(_) => {}
             }
-        } else {
-            //let first_joint = &mut game.string.joints[0]; 
-            //first_joint.velocity = cursor_world_position - first_joint.position;
         }
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
@@ -166,16 +236,13 @@ impl GameState for PlayingState {
             }
         }
 
-        if next_state.is_some() {
-            game.target = None;
-        }
-
         next_state
     }
 }
 
 impl From<&Game> for PlayingState {
     fn from(value: &Game) -> Self {
+        let dimensions: Vector2f<f64> = [1280.0, 720.0].into();
         let mut gravity_slider = GUISlider2D::new(Vector2f::new(1055.0, 100.0), 200.0, |value, event, game| {
             match event {
                 GUIEvent::Change => game.settings.physics.gravity = value * 500.0,
@@ -187,14 +254,14 @@ impl From<&Game> for PlayingState {
 
         let rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
         let text = Text::new(20);
-        let text_box = Display::new(rect, DisplayContent::Text((text, "G".to_string())));
+        let text_box = Display::new(rect, DisplayContent::Text(text, "G".to_string()));
         let gravity_display = GUIButton::new(
             Vector2f::new(1055.0, 25.0), 
             Vector2f::new(200.0, 50.0), 
             text_box,
             |btn, event, game| {
-                if let DisplayContent::Text(text) = &mut btn.display.content {
-                    text.1 = format!("G: {:.2} m/s²", game.settings.physics.gravity.len() / 100.0);
+                if let DisplayContent::Text(_, str) = &mut btn.display.content {
+                    *str = format!("G: {:.2} m/s²", game.settings.physics.gravity.len() / 100.0);
                 }
                 match event {
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
@@ -206,14 +273,77 @@ impl From<&Game> for PlayingState {
             } 
         );
 
+        let slot_size = Vector2f::new(90.0, 90.0);
+
+        let utility_display = Display::new(
+            Rectangle::new_round_border(color::BLACK, 5.0, 1.0),
+            DisplayContent::Text(Text::new(20), "L".to_string()),
+        );
+        let utility_button = GUIButton::new(
+            Vector2f::new(25.0, dimensions.y - 125.0), 
+            slot_size, 
+            utility_display, 
+            |btn, event, game| {
+                match event {
+                    GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
+                    GUIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
+                    GUIEvent::Click => return GUIEvent::Custom("utility".to_string()),
+                    _ => {
+                        btn.display.content = match game.settings.utility {
+                            Utility::Empty => DisplayContent::Text(Text::new(20), "E".to_string()),
+                            Utility::Launch => DisplayContent::Text(Text::new(20), "L".to_string()),
+                            Utility::String(_) => DisplayContent::Text(Text::new(20), "S".to_string()),
+                        }
+                    }
+                }
+                event
+            }
+        );
+
+        let launch_button = GUIButton::new(
+            Vector2f::new(25.0, dimensions.y - 225.0), 
+            slot_size, 
+            Display::new(
+                Rectangle::new_round_border(color::BLACK, 5.0, 1.0),
+                DisplayContent::Text(Text::new(20), "L".to_string()), 
+            ), 
+            |btn, event, game| {
+                match event {
+                    GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
+                    GUIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
+                    GUIEvent::Click => game.settings.utility = Utility::Launch,
+                    _ => {}
+                }
+                event
+            }
+        );
+
+        let string_button = GUIButton::new(
+            Vector2f::new(125.0, dimensions.y - 225.0), 
+            slot_size, 
+            Display::new(
+                Rectangle::new_round_border(color::BLACK, 5.0, 1.0),
+                DisplayContent::Text(Text::new(20), "S".to_string()), 
+            ), 
+            |btn, event, game| {
+                match event {
+                    GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
+                    GUIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
+                    GUIEvent::Click => game.settings.utility = Utility::String(None),
+                    _ => {}
+                }
+                event
+            }
+        );
+
         // Shape selection
         let mut rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
         rect.color = color::GRAY;
         let shape1 = Circle::new(Vector2f::zero(), 25.0, color::BLACK);
         let shape_display = Display::new(rect, DisplayContent::Shape(ShapeType::Circle(shape1)));
-        let slot1 = GUIButton::new(
+        let shape_slot1 = GUIButton::new(
             Vector2f::new(25.0, 125.0), 
-            Vector2f::new(90.0, 90.0), 
+            slot_size,
             shape_display, 
             |btn, event, game| {
                 match event {
@@ -221,7 +351,7 @@ impl From<&Game> for PlayingState {
                     GUIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
                     GUIEvent::Click => {
                         if let DisplayContent::Shape(s) = &btn.display.content {
-                            game.projectile.shape = s.clone();
+                            game.projectile.body.shape = s.clone();
                         }
                         return GUIEvent::Click;
                     }
@@ -231,13 +361,13 @@ impl From<&Game> for PlayingState {
             }, 
         );
 
-        let mut slot2 = slot1.clone();
-        slot2.position.x += 100.0;
+        let mut shape_slot2 = shape_slot1.clone();
+        shape_slot2.position.x += 100.0;
         let shape2 = Polygon::new_rectangle(Vector2f::zero(), 55.0, 25.0, color::BLACK);
-        slot2.display.content = DisplayContent::Shape(ShapeType::Polygon(shape2));
+        shape_slot2.display.content = DisplayContent::Shape(ShapeType::Polygon(shape2));
 
-        let mut slot3 = slot2.clone();
-        slot3.position.x += 100.0;
+        let mut shape_slot3 = shape_slot2.clone();
+        shape_slot3.position.x += 100.0;
         let verts = vec![
             Vector2f::new(-20.0, 20.0),
             Vector2f::new(-20.0, 0.0),
@@ -246,10 +376,10 @@ impl From<&Game> for PlayingState {
             Vector2f::new(20.0, 20.0) 
         ];
         let shape3 = Polygon::new(verts, Vector2f::zero(), color::BLACK);
-        slot3.display.content = DisplayContent::Shape(ShapeType::Polygon(shape3));
+        shape_slot3.display.content = DisplayContent::Shape(ShapeType::Polygon(shape3));
 
-        let mut slot4 = slot3.clone();
-        slot4.position.x += 100.0;
+        let mut shape_slot4 = shape_slot3.clone();
+        shape_slot4.position.x += 100.0;
         let verts = vec![
             Vector2f::new(0.0, -28.0),
             Vector2f::new(15.0, 0.0),
@@ -257,15 +387,15 @@ impl From<&Game> for PlayingState {
             Vector2f::new(-15.0, 0.0) 
         ];
         let shape4 = Polygon::new(verts, Vector2f::zero(), color::BLACK);
-        slot4.display.content = DisplayContent::Shape(ShapeType::Polygon(shape4));
+        shape_slot4.display.content = DisplayContent::Shape(ShapeType::Polygon(shape4));
 
         let rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
-        let shape_display = GUIButton::new(
+        let shape_button = GUIButton::new(
             Vector2f::new(25.0, 25.0), 
-            Vector2f::new(90.0, 90.0), 
+            slot_size, 
             Display::new(rect, DisplayContent::Body(
-                value.projectile.scale(value.projectile_scale), 
-                value.textures.get(&value.projectile.material.name).unwrap().clone())),
+                value.projectile.body.scale(value.projectile.scale), 
+                value.textures.get(&value.projectile.body.material.name).unwrap().clone())),
             |btn, event, game| {
                 match event {
                     GUIEvent::Click => return GUIEvent::Custom("shape".to_string()),
@@ -273,8 +403,8 @@ impl From<&Game> for PlayingState {
                     GUIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
                     _ => {
                         btn.display.content = DisplayContent::Body(
-                            game.projectile.scale(game.projectile_scale), 
-                            game.textures.get(&game.projectile.material.name).unwrap().clone(),
+                            game.projectile.body.scale(game.projectile.scale), 
+                            game.textures.get(&game.projectile.body.material.name).unwrap().clone(),
                         )
                     },
                 }
@@ -282,16 +412,16 @@ impl From<&Game> for PlayingState {
             }
         );
 
-        let material_display = GUIButton::new(
+        let material_button = GUIButton::new(
             Vector2f::new(150.0, 25.0), 
-            Vector2f::new(90.0, 90.0), 
-            Display::new(rect, DisplayContent::Text((Text::new(0), String::new()))),
+            slot_size, 
+            Display::new(rect, DisplayContent::Text(Text::new(0), String::new())),
             |btn, event, game| {
                 match event {
                     GUIEvent::Click => return GUIEvent::Custom("material".to_string()),
                     GUIEvent::Hover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 2.0).border },
                     GUIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
-                    _ => btn.display.content = DisplayContent::Image(game.textures.get(&game.projectile.material.name).unwrap().clone()),
+                    _ => btn.display.content = DisplayContent::Image(game.textures.get(&game.projectile.body.material.name).unwrap().clone()),
                 }
                 event
             }
@@ -299,11 +429,11 @@ impl From<&Game> for PlayingState {
    
         let concrete_slot = GUIButton::new(
             Vector2f::new(25.0, 225.0), 
-            Vector2f::new(90.0, 90.0), 
+            slot_size, 
             Display::new(rect, DisplayContent::Image(value.textures.get(&material::MaterialName::Concrete).unwrap().clone())),
             |btn, event, game| {
                 match event {
-                    GUIEvent::Click => game.projectile.material = CONCRETE,
+                    GUIEvent::Click => game.projectile.body.material = CONCRETE,
                     GUIEvent::Hover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 2.0).border },
                     GUIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
                     _ => {}
@@ -314,11 +444,11 @@ impl From<&Game> for PlayingState {
 
         let ice_slot = GUIButton::new(
             Vector2f::new(125.0, 225.0), 
-            Vector2f::new(90.0, 90.0), 
+            slot_size, 
             Display::new(rect, DisplayContent::Image(value.textures.get(&material::MaterialName::Ice).unwrap().clone())),
             |btn, event, game| {
                 match event {
-                    GUIEvent::Click => game.projectile.material = ICE,
+                    GUIEvent::Click => game.projectile.body.material = ICE,
                     GUIEvent::Hover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 2.0).border },
                     GUIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
                     _ => {}
@@ -329,11 +459,11 @@ impl From<&Game> for PlayingState {
 
         let wood_slot = GUIButton::new(
             Vector2f::new(225.0, 225.0), 
-            Vector2f::new(90.0, 90.0), 
+            slot_size, 
             Display::new(rect, DisplayContent::Image(value.textures.get(&material::MaterialName::Wood).unwrap().clone())),
             |btn, event, game| {
                 match event {
-                    GUIEvent::Click => game.projectile.material = WOOD,
+                    GUIEvent::Click => game.projectile.body.material = WOOD,
                     GUIEvent::Hover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 2.0).border },
                     GUIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
                     _ => {}
@@ -344,11 +474,11 @@ impl From<&Game> for PlayingState {
 
         let steel_slot = GUIButton::new(
             Vector2f::new(325.0, 225.0), 
-            Vector2f::new(90.0, 90.0), 
+            slot_size, 
             Display::new(rect, DisplayContent::Image(value.textures.get(&material::MaterialName::Steel).unwrap().clone())),
             |btn, event, game| {
                 match event {
-                    GUIEvent::Click => game.projectile.material = STEEL,
+                    GUIEvent::Click => game.projectile.body.material = STEEL,
                     GUIEvent::Hover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 2.0).border },
                     GUIEvent::UnHover => { btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 5.0, 1.0).border },
                     _ => {}
@@ -363,22 +493,24 @@ impl From<&Game> for PlayingState {
             color::RED, 
             |value, event, game| {
                 match event {
-                    GUIEvent::Change => game.projectile_scale = (value + 0.25) * 4.0 / 3.0,
+                    GUIEvent::Change => game.projectile.scale = (value + 0.25) * 4.0 / 3.0,
                     _ => {} 
                 }
                 event
             }
         );
-        scale.value = (value.projectile_scale * 3.0 / 4.0) - 0.25;
+        scale.value = (value.projectile.scale * 3.0 / 4.0) - 0.25;
 
         Self { 
-            gui: GUI { components: vec![Box::new(gravity_display), Box::new(scale), Box::new(shape_display), Box::new(material_display)] }, 
-            shape_menu: GUI { components: vec![Box::new(slot1), Box::new(slot2), Box::new(slot3), Box::new(slot4)] }, 
+            gui: GUI { components: vec![Box::new(gravity_display), Box::new(scale), Box::new(shape_button), Box::new(material_button), Box::new(utility_button)] }, 
+            shape_menu: GUI { components: vec![Box::new(shape_slot1), Box::new(shape_slot2), Box::new(shape_slot3), Box::new(shape_slot4)] }, 
             show_shape_menu: false,
             material_menu: GUI { components: vec![Box::new(concrete_slot), Box::new(ice_slot), Box::new(wood_slot), Box::new(steel_slot)] },
             show_material_menu: false,
             physics_menu: GUI { components: vec![Box::new(gravity_slider)] },
             show_physics_menu: false,
+            utility_menu: GUI { components: vec![Box::new(launch_button), Box::new(string_button)] },
+            show_utility_menu: false,
         }   
     }
 }

@@ -77,7 +77,7 @@ impl From<&Game> for PauseState {
         let mut button_position = Vector2f::new(540.0, 100.0);
         let button_size = Vector2f::new(200.0, 50.0);
 
-        let display = Display::new(rect, DisplayContent::Text((text, "Resume".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Resume".to_string()));
         let resume_button = GUIButton::new(
             button_position, 
             button_size, 
@@ -94,7 +94,7 @@ impl From<&Game> for PauseState {
         );
 
         button_position.y += 75.0;
-        let display = Display::new(rect, DisplayContent::Text((text, "Settings".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Settings".to_string()));
         let settings_button = GUIButton::new(
             button_position, 
             button_size, 
@@ -111,7 +111,7 @@ impl From<&Game> for PauseState {
         );
 
         button_position.y += 75.0;
-        let display = Display::new(rect, DisplayContent::Text((text, "Reset".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Reset".to_string()));
         let reset_button = GUIButton::new(
             button_position, 
             button_size, 
@@ -132,7 +132,7 @@ impl From<&Game> for PauseState {
 
         button_position.y += 75.0;
         rect.color = color::RED;
-        let display = Display::new(rect, DisplayContent::Text((text, "Exit to menu".to_string())));
+        let display = Display::new(rect, DisplayContent::Text(text, "Exit to menu".to_string()));
         let exit_button = GUIButton::new(
             button_position, 
             button_size, 

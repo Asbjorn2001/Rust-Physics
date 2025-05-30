@@ -418,6 +418,14 @@ impl AABB {
         self.bottom_right.y > other.top_left.y
     }
 
+    pub fn width(&self) -> f64 {
+        self.bottom_right.x - self.top_left.x
+    }
+
+    pub fn height(&self) -> f64 {
+        self.bottom_right.y - self.top_left.y
+    }
+
     pub fn expand_by(&self, v: Vector2f<f64>) -> AABB {
         let mut aabb = self.clone();
         if v.x > 0.0 {

@@ -70,16 +70,21 @@ const BASE_JOINT_MASS: f64 = 10.0;
 const BASE_TEAR_LENGTH: f64 = 100.0;
 
 impl StringBody {
-    pub fn new(start_position: Vector2f<f64>, num_joints: usize) -> Self {
-        let rest_length = BASE_REST_LENGTH;
-        let tear_length = BASE_TEAR_LENGTH;
+    pub fn new(start_position: Vector2f<f64>, end_position: Vector2f<f64>, num_joints: usize) -> Self {
+        let rel_pos = end_position - start_position;
+        let dir = rel_pos.normalize();
+        let length = rel_pos.len();
+
+        let rest_length = length / (num_joints - 1) as f64;
+        let tear_length = 2.0 * rest_length;
+
         let stiffness = 1.0 - f64::powf(1.0 - BASE_STIFFNESS, 1.0 / CONSTRAINT_ITERATIONS as f64);
         let mass = BASE_JOINT_MASS;
 
         let mut joints = vec![];
         let mut constraints = vec![];
         for i in 0..num_joints {
-            let position = start_position + Vector2f::new(0.0, rest_length) * i as f64;
+            let position = start_position + (dir * rest_length * i as f64);
             let joint = StringJoint {  
                 position,
                 predicted_position: position,
@@ -109,7 +114,7 @@ impl StringBody {
     }
 
     fn damp_velocities(&mut self) {
-        let damping = 0.1;
+        let damping = 0.2;
         let mut joints_and_masses = vec![];
         for joint in self.joints.as_mut_slice() {
             let mass = if let Some(att) = &joint.attachment {
@@ -146,7 +151,6 @@ impl StringBody {
             let dv = cm_vel + r.perpendicular() * angular_velocity - joint.velocity;
             joint.velocity += dv * damping;
         }
-
     }
 
     pub fn resolve_constraints(
@@ -336,8 +340,9 @@ impl StringBody {
     fn generate_collision_constraints(&mut self, dt: f64, objects: &Vec<Rc<RefCell<RigidBody>>>) -> Vec<CollisionConstraint> {
         let mut constraints = vec![];
         for obj_ref in objects {
-            let obj = obj_ref.borrow_mut();
+            let mut obj = obj_ref.borrow_mut();
             let obj_step = obj.linear_velocity * dt;
+            let aabb = obj.shape.get_aabb();
 
             let att_is_obj = |joint: &StringJoint| -> bool {
                 if let Some(att) = &joint.attachment {
@@ -347,19 +352,46 @@ impl StringBody {
                 }
                 false
             };
-
-            let aabb = obj.shape.get_aabb();
+            
             let mut indices_to_skip = vec![];
-            for (i, joint) in self.joints.iter().enumerate() {
+            for (i, joint) in self.joints.iter_mut().enumerate() {
                 let rel_vel = joint.velocity - obj.linear_velocity;
                 if !aabb.expand_by(rel_vel).contains_point(joint.position) {
                     indices_to_skip.push(i);
+                    continue;
+                }
+
+                if att_is_obj(&joint) {
+                    continue;
+                } 
+                
+                let ray_origin = joint.position;
+                let collision = if obj.shape.contains_point(ray_origin) {     
+                    let (cp, normal) = obj.shape.find_closest_surface_point(joint.predicted_position);   
+                    let c_cp = cp - obj.shape.get_center();
+                    Some(CollisionData { sep_or_t: (c_cp).len(), normal: normal, contacts: vec![cp] })
+                } else {
+                    let ray_dir = joint.predicted_position - joint.position - obj_step;
+                    match &obj.shape {
+                        ShapeType::Circle(c) => ray_vs_circle(ray_origin, ray_dir, c),
+                        ShapeType::Polygon(p) => ray_vs_polygon(ray_origin, ray_dir, p),
+                    }
+                };
+                
+                if let Some(collision) = collision {
+                    indices_to_skip.push(i);
+                    constraints.push(CollisionConstraint {
+                        index: i,
+                        contact_point: collision.contacts[0],
+                        normal: collision.normal,
+                        object: obj_ref.clone(),
+                    });
                 }
             }
 
             for constraint in self.constraints.as_slice() {
                 let (i, j) = (constraint.index_a, constraint.index_b);
-                if indices_to_skip.contains(&i) && indices_to_skip.contains(&j) {
+                if indices_to_skip.contains(&i) || indices_to_skip.contains(&j) {
                     continue;
                 }
 
@@ -368,20 +400,30 @@ impl StringBody {
                     continue;
                 }
 
-                let collision = match &obj.shape {
-                    ShapeType::Circle(c) => {
-                        swept_circle_vs_segment(c, obj_step, a.position, b.position).or(
-                        circle_vs_segment(c, a.predicted_position, b.predicted_position))                 
-                    }
-                    ShapeType::Polygon(p) => {
-                        swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position).or(
-                        polygon_vs_segment(p, a.predicted_position, b.predicted_position))
-                    } 
+                let critical_velocity = {
+                    let min_dimension = aabb.width().min(aabb.height());
+                    obj_step.len_squared() > min_dimension * min_dimension / 2.0
                 };
+
+                let mut collision = None;
+                if critical_velocity {
+                    obj.shape.translate(-obj_step);
+                    collision = match &obj.shape {
+                        ShapeType::Circle(c) => swept_circle_vs_segment(c, obj_step, a.predicted_position, b.predicted_position),
+                        ShapeType::Polygon(p) => swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position),
+                    };
+                    obj.shape.translate(obj_step);
+                } 
+
+                if collision.is_none() {
+                    collision = match &obj.shape {
+                        ShapeType::Circle(c) => circle_vs_segment(c, a.predicted_position, b.predicted_position),
+                        ShapeType::Polygon(p) => polygon_vs_segment(p, a.predicted_position, b.predicted_position),
+                    }
+                }
 
                 if let Some(collision) = collision {
                     let joints = vec![i, j];
-                    indices_to_skip.extend(joints.clone());
                     for cp in collision.contacts {
                         for joint in joints.as_slice() {
                             constraints.push(CollisionConstraint {
@@ -394,34 +436,6 @@ impl StringBody {
                     }
                 }
             } 
-            
-            for (i, joint) in self.joints.iter_mut().enumerate() {
-                if indices_to_skip.contains(&i) || att_is_obj(&joint) {
-                    continue;
-                }
-                
-                let ray_origin = joint.position;
-                let collision = if obj.shape.contains_point(ray_origin) {     
-                    let (cp, normal) = obj.shape.find_closest_surface_point(joint.predicted_position);   
-                    let c_cp = cp - obj.shape.get_center();
-                    Some(CollisionData { sep_or_t: (c_cp).len(), normal: normal, contacts: vec![cp + obj_step] })
-                } else {
-                    let ray_dir = joint.predicted_position - joint.position - obj_step;
-                    match &obj.shape {
-                        ShapeType::Circle(c) => ray_vs_circle(ray_origin, ray_dir, c),
-                        ShapeType::Polygon(p) => ray_vs_polygon(ray_origin, ray_dir, p),
-                    }
-                };
-                
-                if let Some(collision) = collision {
-                    constraints.push(CollisionConstraint {
-                        index: i,
-                        contact_point: collision.contacts[0],
-                        normal: collision.normal,
-                        object: obj_ref.clone(),
-                    });
-                }
-            }
         }
         
         constraints
