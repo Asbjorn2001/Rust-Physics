@@ -5,7 +5,7 @@ use graphics::{ellipse, line, math::Matrix2d, rectangle::square, Context};
 use opengl_graphics::GlGraphics;
 use graphics::color;
 use rand::rand_core::le;
-use crate::{game::{benchmarks::BenchmarkTests, ContactDebug, Game, PhysicsSettings}, Vector2f};
+use crate::{game::{benchmarks::BenchmarkTests, ContactDebug, Game, PhysicsData}, Vector2f};
 use crate::utils::helpers::*;
 use super::collision::{self, *};
 use super::{rigid_body::RigidBody, shape::Shape, shape_type::ShapeType};
@@ -13,13 +13,14 @@ use super::{rigid_body::RigidBody, shape::Shape, shape_type::ShapeType};
 // The soft body string is implemented based on Position Based Dynamics 
 // source: https://matthias-research.github.io/pages/publications/posBasedDyn.pdf
 
+#[derive(Clone)]
 pub struct Attachment {
     pub obj_ref: Rc<RefCell<RigidBody>>,
     pub rel_pos: Vector2f<f64>, 
 }
 
 impl Attachment {
-    fn get_att_point(&self) -> Vector2f<f64> {
+    fn get_attachment_point(&self) -> Vector2f<f64> {
         let obj = self.obj_ref.borrow();
         obj.shape.get_center() + self.rel_pos.rotate(obj.shape.get_rotation())
     }
@@ -60,9 +61,11 @@ pub struct CollisionConstraint {
 
 pub struct StringBody {
     pub joints: Vec<StringJoint>,
-    pub constraints: Vec<StringConstraint>,        
+    pub constraints: Vec<StringConstraint>,
+    pub damping: f64,
 }
 
+const BASE_DAMPING: f64 = 0.2;
 const CONSTRAINT_ITERATIONS: usize = 8;
 const BASE_STIFFNESS: f64 = 0.9;
 const BASE_REST_LENGTH: f64 = 10.0;
@@ -109,12 +112,12 @@ impl StringBody {
 
         Self { 
             joints, 
-            constraints, 
+            constraints,
+            damping: BASE_DAMPING,
         }
     }
 
     fn damp_velocities(&mut self) {
-        let damping = 0.2;
         let mut joints_and_masses = vec![];
         for joint in self.joints.as_mut_slice() {
             let mass = if let Some(att) = &joint.attachment {
@@ -149,22 +152,20 @@ impl StringBody {
         for joint in self.joints.as_mut_slice() {
             let r = joint.position - cm_pos;
             let dv = cm_vel + r.perpendicular() * angular_velocity - joint.velocity;
-            joint.velocity += dv * damping;
+            joint.velocity += dv * self.damping;
         }
     }
 
     pub fn resolve_constraints(
         &mut self, 
-        dt: f64, 
-        physics: &PhysicsSettings, 
+        physics: &PhysicsData, 
         objects: &Vec<Rc<RefCell<RigidBody>>>, 
-        contacts: &mut Vec<ContactDebug>,
-        benchmarks: &mut BenchmarkTests,
-    ) -> Option<StringBody> 
-        {
+        contacts: &mut Vec<ContactDebug>
+    ) -> Option<StringBody> {
+        let dt = physics.dt;
         for joint in self.joints.as_mut_slice() {
             if let Some(att) = &joint.attachment {
-                joint.position = att.get_att_point();
+                joint.position = att.get_attachment_point();
                 joint.velocity = att.obj_ref.borrow().linear_velocity;
             } else {
                 joint.velocity += physics.gravity * dt;
@@ -178,14 +179,11 @@ impl StringBody {
             joint.predicted_position = joint.position + joint.velocity * dt;
         }
 
-        benchmarks.string_constraint_detection.start();
         let collision_constraints = self.generate_collision_constraints(dt, objects);
-        benchmarks.string_constraint_detection.stop(Some(self.joints.len()));
         for c in collision_constraints.as_slice() {
             contacts.push(ContactDebug { contact: c.contact_point, normal: c.normal });
         }
 
-        benchmarks.string_constraint_solving.start();
         for _ in 0..CONSTRAINT_ITERATIONS {
             let mut tear_index = None;
             for (i, constraint) in self.constraints.iter().enumerate() {
@@ -201,8 +199,8 @@ impl StringBody {
                     let a_inv_mass = a.get_inv_mass();
                     let b_inv_mass = b.get_inv_mass();
                     let denom = a_inv_mass + b_inv_mass;
-
                     let normal = rel_pos / dist;
+                    
                     a.predicted_position += normal * stretch * constraint.stiffness * a_inv_mass / denom;
                     b.predicted_position += -normal * stretch * constraint.stiffness * b_inv_mass / denom;
                 }
@@ -213,21 +211,19 @@ impl StringBody {
             }
 
             for constraint in collision_constraints.as_slice() {
-                let p = &mut self.joints[constraint.index];
                 let normal = constraint.normal;
+                let joint = &mut self.joints[constraint.index];
+                let joint_inv_mass = joint.get_inv_mass();
 
                 let mut obj = constraint.object.borrow_mut();
-                let obj_mass = obj.shape.area() * obj.material.density;
-
-                let rel_pos = p.predicted_position - constraint.contact_point;
+                let obj_inv_mass = obj.get_inv_mass();
+                
+                let rel_pos = joint.predicted_position - constraint.contact_point;
                 let depth = rel_pos.dot(normal);
                 if depth < 0.0 {
-                    if obj.is_static {
-                        p.predicted_position += -normal * depth;
-                    } else {
-                        obj.linear_velocity += normal * depth * p.mass / (obj_mass * dt);
-                        p.predicted_position += -normal * depth;
-                    }
+                    let denom = joint_inv_mass + obj_inv_mass;
+                    obj.linear_velocity += normal * depth * obj_inv_mass / (denom * dt);
+                    joint.predicted_position += -normal * depth;
                 }
             }
         }
@@ -247,7 +243,6 @@ impl StringBody {
         }
 
         self.resolve_collisions(&collision_constraints);
-        benchmarks.string_constraint_solving.stop(Some(self.constraints.len() + collision_constraints.len()));
 
         None
     }
@@ -331,39 +326,55 @@ impl StringBody {
             return Some(StringBody {
                 joints: self.joints.split_off(i + 1),
                 constraints,
+                damping: self.damping,
             });
         }
 
         return None;
     }
 
+    pub fn get_aabb(&self) -> AABB {
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+
+        for joint in self.joints.as_slice() {
+            min_x = min_x.min(joint.position.x).min(joint.predicted_position.x);
+            max_x = max_x.max(joint.position.x).max(joint.predicted_position.x);
+            min_y = min_y.min(joint.position.y).min(joint.predicted_position.y);
+            max_y = max_y.max(joint.position.y).max(joint.predicted_position.y);
+        }
+
+        AABB { top_left: Vector2f::new(min_x, min_y), bottom_right: Vector2f::new(max_x, max_y)}
+    }
+
     fn generate_collision_constraints(&mut self, dt: f64, objects: &Vec<Rc<RefCell<RigidBody>>>) -> Vec<CollisionConstraint> {
         let mut constraints = vec![];
-        for obj_ref in objects {
+        let string_aabb = self.get_aabb();
+        'obj_loop: for obj_ref in objects {
             let mut obj = obj_ref.borrow_mut();
             let obj_step = obj.linear_velocity * dt;
-            let aabb = obj.shape.get_aabb();
 
-            let att_is_obj = |joint: &StringJoint| -> bool {
-                if let Some(att) = &joint.attachment {
-                    if att.obj_ref.as_ptr() == obj_ref.as_ptr() {
-                        return true;
+            let mut indices_to_skip = vec![];
+            for (i, joint) in self.joints.iter().enumerate() {
+                if let Some(attachment) = &joint.attachment {
+                    indices_to_skip.push(i);
+                    if attachment.obj_ref.as_ptr() == obj_ref.as_ptr() && !obj.is_static {
+                        continue 'obj_loop;
                     }
                 }
-                false
-            };
-            
-            let mut indices_to_skip = vec![];
-            for (i, joint) in self.joints.iter_mut().enumerate() {
-                let rel_vel = joint.velocity - obj.linear_velocity;
-                if !aabb.expand_by(rel_vel).contains_point(joint.position) {
+
+                let rel_vel = obj.linear_velocity - joint.velocity;
+                if !obj.shape.get_aabb().expand_by(rel_vel).overlap(&string_aabb) {
                     indices_to_skip.push(i);
+                }
+            }
+            
+            for (i, joint) in self.joints.iter_mut().enumerate() {
+                if indices_to_skip.contains(&i) {
                     continue;
                 }
-
-                if att_is_obj(&joint) {
-                    continue;
-                } 
                 
                 let ray_origin = joint.position;
                 let collision = if obj.shape.contains_point(ray_origin) {     
@@ -379,7 +390,6 @@ impl StringBody {
                 };
                 
                 if let Some(collision) = collision {
-                    indices_to_skip.push(i);
                     constraints.push(CollisionConstraint {
                         index: i,
                         contact_point: collision.contacts[0],
@@ -395,44 +405,31 @@ impl StringBody {
                     continue;
                 }
 
-                let (a, b) = (&self.joints[i], &self.joints[j]);
-                if att_is_obj(a) || att_is_obj(b) {
-                    continue;
-                }
-
-                let critical_velocity = {
-                    let min_dimension = aabb.width().min(aabb.height());
-                    obj_step.len_squared() > min_dimension * min_dimension / 2.0
+                let (a, b) = (&self.joints[i], &self.joints[j]);                
+                let mut collision = match &obj.shape {
+                    ShapeType::Circle(c) => circle_vs_segment(c, a.predicted_position, b.predicted_position),
+                    ShapeType::Polygon(p) => polygon_vs_segment(p, a.predicted_position, b.predicted_position),
                 };
 
-                let mut collision = None;
-                if critical_velocity {
+                // Double check using ray tracing
+                if collision.is_none() {
                     obj.shape.translate(-obj_step);
                     collision = match &obj.shape {
                         ShapeType::Circle(c) => swept_circle_vs_segment(c, obj_step, a.predicted_position, b.predicted_position),
                         ShapeType::Polygon(p) => swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position),
                     };
-                    obj.shape.translate(obj_step);
-                } 
-
-                if collision.is_none() {
-                    collision = match &obj.shape {
-                        ShapeType::Circle(c) => circle_vs_segment(c, a.predicted_position, b.predicted_position),
-                        ShapeType::Polygon(p) => polygon_vs_segment(p, a.predicted_position, b.predicted_position),
-                    }
+                    obj.shape.translate(obj_step);  
                 }
 
                 if let Some(collision) = collision {
                     let joints = vec![i, j];
-                    for cp in collision.contacts {
-                        for joint in joints.as_slice() {
-                            constraints.push(CollisionConstraint {
-                                index: *joint,
-                                contact_point: cp,
-                                normal: collision.normal,
-                                object: obj_ref.clone(),
-                            });
-                        }
+                    for joint in joints.as_slice() {
+                        constraints.push(CollisionConstraint {
+                            index: *joint,
+                            contact_point: collision.contacts[0],
+                            normal: collision.normal,
+                            object: obj_ref.clone(),
+                        });
                     }
                 }
             } 

@@ -6,7 +6,7 @@ use opengl_graphics::{GlGraphics, Texture};
 use piston_window::{texture, TextureSettings};
 
 use crate::Vector2f;
-use crate::game::PhysicsSettings;
+use crate::game::PhysicsData;
 use crate::physics::shape_type::ShapeType;
 use crate::physics::shape::Shape;
 use crate::physics::polygon::Polygon;
@@ -87,15 +87,15 @@ impl RigidBody {
         if self.is_static { 0.0 } else { 1.0 / (self.shape.momemnt_of_inertia() * self.material.density) }
     }
 
-    pub fn update_velocity(&mut self, dt: f64, physics: &PhysicsSettings) {
+    pub fn update_velocity(&mut self, physics: &PhysicsData) {
         if self.is_static {
             return;
         }
 
-        self.linear_velocity += physics.gravity * dt;        
+        self.linear_velocity += physics.gravity * physics.dt;        
         
-        self.linear_velocity *= 1.0 - physics.air_density * dt;
-        self.angular_velocity *= 1.0 - physics.air_density * dt;       
+        self.linear_velocity *= 1.0 - physics.air_density * physics.dt;
+        self.angular_velocity *= 1.0 - physics.air_density * physics.dt;       
     }
 
     pub fn update_position(&mut self, dt: f64) {

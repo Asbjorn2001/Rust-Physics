@@ -23,7 +23,6 @@ pub struct TiledMesh {
 
 impl TiledMesh {
     pub fn draw(&self, transform: Matrix2d, color: [f32; 4], texture: &Texture, c: Context, gl: &mut GlGraphics) {
-        let transform = transform.scale(1.02, 1.02); // Fixes the small gap between objects
         for mesh in self.tiles.as_slice() {
             let v: Vec<[f32; 2]> = mesh.verts.iter().map(|v| [tx(transform, v[0] as f64, v[1] as f64), ty(transform, v[0] as f64, v[1] as f64)]).collect();
             gl.tri_list_uv(&c.draw_state, &color, texture, |f| {

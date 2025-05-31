@@ -15,6 +15,9 @@ use benchmarks::BenchmarkTests;
 use graphics::math::scale;
 use graphics::math::translate;
 use graphics::math::Matrix2d;
+use graphics::rectangle;
+use graphics::rectangle::square;
+use graphics::Rectangle;
 use graphics::Transformed;
 use piston::UpdateArgs;
 use piston_window::TextureSettings;
@@ -52,7 +55,7 @@ pub struct Projectile {
 
 pub struct StringStart {
     pub position: Vector2f<f64>,
-    pub attachment: Option<Rc<RefCell<RigidBody>>>,
+    pub attachment: Option<Attachment>,
 }
 
 pub enum Utility {
@@ -64,7 +67,6 @@ pub enum Utility {
 pub struct GameSettings {
     pub camera: CameraSettings,
     pub view: ViewSettings,
-    pub physics: PhysicsSettings,
     pub utility: Utility,
     pub debug_mode: bool,
 }
@@ -74,7 +76,6 @@ impl Default for GameSettings {
         Self { 
             camera: CameraSettings::default(),
             view: ViewSettings::default(),
-            physics: PhysicsSettings::default(), 
             utility: Utility::Launch,
             debug_mode: false,
         }
@@ -111,14 +112,19 @@ impl Default for ViewSettings {
     }
 }
 
-pub struct PhysicsSettings {
+pub struct PhysicsData {
     pub gravity: Vector2f<f64>,
     pub air_density: f64,
+    pub dt: f64,
 }
 
-impl Default for PhysicsSettings {
+impl Default for PhysicsData {
     fn default() -> Self {
-        PhysicsSettings { gravity: Vector2f { x: 0.0, y: 250.0 }, air_density: 0.08 }
+        PhysicsData { 
+            gravity: Vector2f { x: 0.0, y: 250.0 }, 
+            air_density: 0.08,
+            dt: 1.0 / 120.0, 
+        }
     }
 }
 
@@ -129,6 +135,7 @@ pub struct ContactDebug {
 
 pub struct Game {
     pub settings: GameSettings,
+    pub physics: PhysicsData,
     pub bodies: Vec<Rc<RefCell<RigidBody>>>,
     pub projectile: Projectile,
     pub contacts: Vec<ContactDebug>,
@@ -136,7 +143,6 @@ pub struct Game {
     pub context: Context,
     pub camera_transform: Matrix2d,
     pub strings: Vec<Rc<RefCell<StringBody>>>,
-    pub dt: f64,
     pub benchmarks: BenchmarkTests,
 }
 
@@ -185,7 +191,7 @@ impl Default for Game {
         tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("ice.png"), &tex_settings).unwrap()));
         tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
-        let mut string1 = StringBody::new(Vector2f::new(640.0, 300.0), Vector2f::new(640.0, 500.0), 10);
+        let mut string1 = StringBody::new(Vector2f::new(640.0, 320.0), Vector2f::new(640.0, 550.0), 10);
 
         let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), STEEL, false);
         let head_ref = Rc::new(RefCell::new(head.clone()));
@@ -209,6 +215,7 @@ impl Default for Game {
 
         Self { 
             settings: GameSettings::default(), 
+            physics: PhysicsData::default(),
             bodies: vec![floor_ref, floor_body_ref, ramp1, ramp2, triangle, head_ref, tail_ref], 
             projectile: Projectile { 
                 target: None, 
@@ -220,7 +227,6 @@ impl Default for Game {
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             strings: vec![Rc::new(RefCell::new(string1)), Rc::new(RefCell::new(string2))],
-            dt: 1.0 / 60.0,
             benchmarks: BenchmarkTests::default(),
         }
     }
@@ -236,12 +242,13 @@ impl Game {
             if self.settings.debug_mode || self.settings.view.show_velocites {
                 for joint in string.joints.as_slice() {
                     let start = joint.position;
-                    let end = start + joint.velocity * self.dt;
+                    let end = start + joint.velocity * self.physics.dt;
                     let l = [start.x, start.y, end.x, end.y];
                     graphics::line(color::CYAN, 1.0, l, self.camera_transform, gl);
                 }
             }
         }
+        
         for obj in self.bodies.as_slice() {
             let obj = obj.borrow();
             obj.draw(self.camera_transform, &self.textures.get(&obj.material.name).unwrap(), c, gl);
@@ -250,9 +257,20 @@ impl Game {
             }
             if self.settings.view.show_velocites || self.settings.debug_mode {
                 let start = obj.shape.get_center();
-                let end = start + obj.linear_velocity * self.dt;
+                let end = start + obj.linear_velocity * self.physics.dt;
                 let l = [start.x, start.y, end.x, end.y];
                 graphics::line(color::CYAN, 1.0, l, self.camera_transform, gl);
+            }
+
+            if self.settings.debug_mode {
+                let mut aabb = obj.shape.get_aabb();
+                let center = obj.shape.get_center();
+                aabb.top_left -= center;
+                aabb.bottom_right -= center;
+                aabb.bottom_right *= 2.0;
+                let rect = [aabb.top_left.x, aabb.top_left.y, aabb.bottom_right.x, aabb.bottom_right.y];
+                Rectangle::new_border(color::BLACK, 1.0)
+                    .draw(rect, &c.draw_state, self.camera_transform.trans_pos(center), gl);
             }
         }
 
@@ -278,11 +296,11 @@ impl Game {
     pub fn update(&mut self, dt: f64) {
         self.benchmarks.updating.start();
         self.contacts.clear();
-        self.dt = dt;
+        self.physics.dt = dt;
 
         for obj in self.bodies.as_slice() {
             let mut obj = obj.borrow_mut();
-            obj.update_velocity(self.dt, &self.settings.physics);
+            obj.update_velocity(&self.physics);
         }
 
         // Detect body on body collisions and push out
@@ -293,7 +311,7 @@ impl Game {
                 let (a, b) = get_pair_mut(&mut self.bodies, i, j);
                 let mut a = a.borrow_mut();
                 let mut b = b.borrow_mut();
-                if let Some(collision) = a.collide_with(&mut b, self.dt) {
+                if let Some(collision) = a.collide_with(&mut b, self.physics.dt) {
                     self.contacts.extend(collision.contacts.iter().map(|&contact| ContactDebug { contact, normal: collision.normal}));
                     collisions.push((i, j, collision));
                 }
@@ -320,11 +338,9 @@ impl Game {
         for string in self.strings.as_slice() {
             let mut string = string.borrow_mut();
             if let Some(new_string) = string.resolve_constraints(
-                self.dt, 
-                &self.settings.physics, 
+                &self.physics, 
                 &self.bodies, 
                 &mut self.contacts, 
-                &mut self.benchmarks
             ) {
                 new_strings.push(Rc::new(RefCell::new(new_string)));
             }
@@ -332,7 +348,7 @@ impl Game {
         self.strings.extend(new_strings);  
 
         for obj_ref in self.bodies.as_mut_slice() {
-            obj_ref.borrow_mut().update_position(self.dt);
+            obj_ref.borrow_mut().update_position(self.physics.dt);
         }
         self.benchmarks.updating.stop(None);
     }

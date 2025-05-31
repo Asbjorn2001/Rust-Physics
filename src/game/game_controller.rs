@@ -43,7 +43,7 @@ impl GameController {
                 Key::Right => self.game.settings.camera.position.x += 50.0,
                 Key::Space => {
                     if self.game.settings.debug_mode {
-                        self.game.update(self.game.dt);
+                        self.game.update(self.game.physics.dt);
                     }
                 }
                 Key::D => self.game.settings.debug_mode = !self.game.settings.debug_mode,

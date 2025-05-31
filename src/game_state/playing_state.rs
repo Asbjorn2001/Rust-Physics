@@ -28,7 +28,6 @@ use crate::Texture;
 use graphics::math::translate;
 use graphics::rectangle::square;
 use piston_window::*;
-use rand::rand_core::le;
 use vecmath::row_mat2x3_transform_pos2;
 use crate::game::Game;
 use crate::GlGraphics;
@@ -170,25 +169,27 @@ impl GameState for PlayingState {
                         for obj_ref in game.bodies.as_slice() {
                             let obj = obj_ref.borrow();
                             if obj.shape.contains_point(end_position) {
-                                end_position = obj.shape.find_closest_surface_point(end_position).0;
-                                end_attachment = Some(obj_ref);
+                                end_position = if obj.is_static {
+                                    obj.shape.find_closest_surface_point(end_position).0
+                                } else {
+                                    obj.shape.get_center()
+                                };
+                                let rel_pos = (end_position - obj.shape.get_center()).rotate(-obj.shape.get_rotation());
+                                end_attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
                                 break;
                             } 
                         }
 
                         let len = (end_position - start.position).len();
-                        let mut string = StringBody::new(start.position, end_position, len as usize / 10);
-                        if let Some(obj_ref) = &start.attachment {
-                            let rel_pos = start.position - obj_ref.borrow().shape.get_center();
-                            string.joints[0].attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
+                        let num_joints  = len as usize / 10;
+                        if num_joints > 1 {
+                            let mut string = StringBody::new(start.position, end_position, num_joints);
+                            string.joints[0].attachment = start.attachment.clone();
+                            string.joints.last_mut().unwrap().attachment = end_attachment;
+                            game.strings.push(Rc::new(RefCell::new(string)));
                         }
-
-                        if let Some(obj_ref) = end_attachment {
-                            let rel_pos = end_position - obj_ref.borrow().shape.get_center();
-                            string.joints.last_mut().unwrap().attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
-                        }
-
-                        game.strings.push(Rc::new(RefCell::new(string)));
+                        
+                        start.attachment = None;
                         *string_start = None;
                     } else {
                         let mut start_position = cursor_world_position;
@@ -196,8 +197,13 @@ impl GameState for PlayingState {
                         for obj_ref in game.bodies.as_slice() {
                             let obj = obj_ref.borrow();
                             if obj.shape.contains_point(start_position) {
-                                start_position = obj.shape.find_closest_surface_point(start_position).0;
-                                start_attachment = Some(obj_ref.clone());
+                                start_position = if obj.is_static {
+                                    obj.shape.find_closest_surface_point(start_position).0
+                                } else {
+                                    obj.shape.get_center()
+                                };
+                                let rel_pos = (start_position - obj.shape.get_center()).rotate(-obj.shape.get_rotation());
+                                start_attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
                                 break;
                             }
                         }
@@ -245,12 +251,12 @@ impl From<&Game> for PlayingState {
         let dimensions: Vector2f<f64> = [1280.0, 720.0].into();
         let mut gravity_slider = GUISlider2D::new(Vector2f::new(1055.0, 100.0), 200.0, |value, event, game| {
             match event {
-                GUIEvent::Change => game.settings.physics.gravity = value * 500.0,
+                GUIEvent::Change => game.physics.gravity = value * 500.0,
                 _ => {}
             }
             event
         });
-        gravity_slider.value = value.settings.physics.gravity / 500.0;
+        gravity_slider.value = value.physics.gravity / 500.0;
 
         let rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
         let text = Text::new(20);
@@ -261,7 +267,7 @@ impl From<&Game> for PlayingState {
             text_box,
             |btn, event, game| {
                 if let DisplayContent::Text(_, str) = &mut btn.display.content {
-                    *str = format!("G: {:.2} m/s²", game.settings.physics.gravity.len() / 100.0);
+                    *str = format!("G: {:.2} m/s²", game.physics.gravity.len() / 100.0);
                 }
                 match event {
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,

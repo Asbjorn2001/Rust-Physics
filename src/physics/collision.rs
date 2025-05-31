@@ -404,7 +404,7 @@ fn ray_intersect_segment(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, p1: 
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct AABB {
     pub top_left: Vector2f<f64>,
     pub bottom_right: Vector2f<f64>
