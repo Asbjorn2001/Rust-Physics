@@ -68,7 +68,6 @@ impl GameState for PlayingState {
         }
 
         match &game.settings.utility {
-            game::Utility::Empty => {},
             game::Utility::Launch => {
                 if let Some(target) = game.projectile.target {
                     let projectile_pos = game.projectile.body.shape.get_center();
@@ -158,7 +157,6 @@ impl GameState for PlayingState {
         // Set target on press
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             match &mut game.settings.utility {
-                game::Utility::Empty => {},
                 game::Utility::Launch => if !interaction {
                     game.projectile.target = Some(cursor_world_position.into())
                 },
@@ -180,6 +178,9 @@ impl GameState for PlayingState {
                             } 
                         }
 
+                        if let Some(att) = &start.attachment {
+                            start.position = att.get_attachment_point();
+                        }
                         let len = (end_position - start.position).len();
                         let num_joints  = len as usize / 10;
                         if num_joints > 1 {
@@ -220,7 +221,6 @@ impl GameState for PlayingState {
 
         if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
             match &game.settings.utility {
-                game::Utility::Empty => {},
                 game::Utility::Launch => {
                     if let Some(target) = game.projectile.target {
                         let velocity = (target - cursor_world_position) * 2.0;
@@ -235,8 +235,12 @@ impl GameState for PlayingState {
             }
         }
 
+        let mut player = game.player.borrow_mut();
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
+                Key::A => player.linear_velocity.x -= 10.0,
+                Key::D => player.linear_velocity.x += 10.0,
+                Key::Space => player.linear_velocity.y -= 200.0,  
                 Key::Escape => next_state = Some(Box::new(PauseState::from(&*game))),
                 _ => {}
             }
@@ -296,7 +300,6 @@ impl From<&Game> for PlayingState {
                     GUIEvent::Click => return GUIEvent::Custom("utility".to_string()),
                     _ => {
                         btn.display.content = match game.settings.utility {
-                            Utility::Empty => DisplayContent::Text(Text::new(20), "E".to_string()),
                             Utility::Launch => DisplayContent::Text(Text::new(20), "L".to_string()),
                             Utility::String(_) => DisplayContent::Text(Text::new(20), "S".to_string()),
                         }

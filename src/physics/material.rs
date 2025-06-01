@@ -1,8 +1,3 @@
-use std::cmp;
-
-use graphics::color;
-use opengl_graphics::Texture;
-
 #[derive(Clone, Copy)]
 pub struct Material {
     pub name: MaterialName,
@@ -12,6 +7,7 @@ pub struct Material {
     pub dynamic_friction: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MaterialName {
     Rubber,
@@ -27,6 +23,7 @@ pub enum MaterialName {
     HumanBody,
 }
 
+#[allow(dead_code)]
 pub const RUBBER: Material = Material {
     name: MaterialName::Rubber,
     density: 1.1,
@@ -35,6 +32,7 @@ pub const RUBBER: Material = Material {
     dynamic_friction: 0.4,
 };
 
+#[allow(dead_code)]
 pub const PLASTIC: Material = Material {
     name: MaterialName::Plastic,
     density: 1.175,
@@ -43,6 +41,7 @@ pub const PLASTIC: Material = Material {
     dynamic_friction: 0.25,
 };
 
+#[allow(dead_code)]
 pub const GLASS: Material = Material {
     name: MaterialName::Glass,
     density: 2.5,
@@ -75,6 +74,7 @@ pub const STEEL: Material = Material {
     dynamic_friction: 0.45,
 };
 
+#[allow(dead_code)]
 pub const COPPER: Material = Material {
     name: MaterialName::Copper,
     density: 8.94,
@@ -83,6 +83,7 @@ pub const COPPER: Material = Material {
     dynamic_friction: 0.4,
 };
 
+#[allow(dead_code)]
 pub const ALUMINIUM: Material = Material {
     name: MaterialName::Aluminium,
     density: 2.7,
@@ -91,6 +92,7 @@ pub const ALUMINIUM: Material = Material {
     dynamic_friction: 0.47,
 };
 
+#[allow(dead_code)]
 pub const DIRT: Material = Material {
     name: MaterialName::Dirt,
     density: 1.6,
@@ -99,6 +101,7 @@ pub const DIRT: Material = Material {
     dynamic_friction: 0.45,
 };
 
+#[allow(dead_code)]
 pub const HUMAN_BODY: Material = Material {
     name: MaterialName::HumanBody,
     density: 0.985,

@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use crate::physics::material::MaterialName;
 use crate::physics::rigid_body::RigidBody;
 use crate::physics::shape::Renderable;
 use crate::physics::shape_type::ShapeType;
@@ -59,7 +58,7 @@ impl GUISlider2D {
 }
 
 impl GUIComponent for GUISlider2D {
-    fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, _: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         let transform = c.transform.trans_pos(self.position);
         let rect = [0.0, 0.0, self.size, self.size];
         graphics::ellipse(color::SILVER, rect, transform, gl);
@@ -134,7 +133,7 @@ impl GUISlider {
 }
 
 impl GUIComponent for GUISlider {
-    fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, _: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         let transform = c.transform.trans_pos(self.position);
         let rect = [0.0, 0.0, self.size.x, self.size.y];
         

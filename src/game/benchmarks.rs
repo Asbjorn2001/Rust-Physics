@@ -1,6 +1,4 @@
-use std::{fmt::Display, option, time::{Duration, Instant}};
-
-use rand::seq;
+use std::{fmt::Display, time::{Duration, Instant}};
 
 pub struct BenchmarkStatistic {
     timer: Instant,
@@ -66,6 +64,7 @@ impl Display for BenchmarkStatistic {
     }
 }
 
+#[allow(dead_code)]
 pub struct BenchmarkTests {
     pub rigid_collision_detection: BenchmarkStatistic,
     pub rigid_collision_solving: BenchmarkStatistic,

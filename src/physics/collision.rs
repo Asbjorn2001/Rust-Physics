@@ -1,5 +1,4 @@
 use core::f64;
-use std::num::NonZeroI16;
 use std::vec;
 
 use crate::utils::helpers::nearly_equal;

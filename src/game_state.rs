@@ -13,8 +13,10 @@ use crate::Context;
 use piston_window::Event;
 
 pub trait GameState {
+    #[allow(dead_code)]
     fn draw(&self, game: &Game, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics);
 
+    #[allow(dead_code)]
     fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>>;
 }
 

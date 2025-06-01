@@ -1,4 +1,4 @@
-**Idea 1 geometry football**
+**geometry football**
 
 multiplayer game of 2 teams / 2 player game
 
@@ -10,14 +10,14 @@ multiplayer game of 2 teams / 2 player game
 - Obstacles can have special effects.
 - Obstacles can break into smaller obstacles. 
 - Some balls gives more  points due to difference in physics.
-- Goals might move around or resize
-- Cool sound effects when hitting obstacles
+- Goals might move around or resize.
+- Cool sound effects when hitting obstacles.
 
-**Idea 2 polygon/physics tetris**
+**polygon/physics tetris**
 
-**Idea 3 physics sandbox**
+**physics sandbox**
 
-**Idea 4 Alternative pool**
+**Alternative pool**
 - A type of pool with different shapes and object
 
 **Tower build / defense**

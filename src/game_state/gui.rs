@@ -29,7 +29,7 @@ impl GUI {
             button_position, 
             button_size, 
             display,
-            |btn, event, game| { 
+            |btn, event, _| { 
                 match event {
                     GUIEvent::Click => return GUIEvent::Custom("back".to_string()),
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,

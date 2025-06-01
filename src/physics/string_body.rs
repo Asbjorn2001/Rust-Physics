@@ -1,13 +1,12 @@
 use core::f64;
-use std::{cell::{Ref, RefCell}, f32::EPSILON, rc::Rc};
+use std::{cell::{RefCell}, rc::Rc};
 
 use graphics::{ellipse, line, math::Matrix2d, rectangle::square, Context};
 use opengl_graphics::GlGraphics;
 use graphics::color;
-use rand::rand_core::le;
-use crate::{game::{benchmarks::BenchmarkTests, ContactDebug, Game, PhysicsData}, Vector2f};
+use crate::{game::{ContactDebug, PhysicsData}, Vector2f};
 use crate::utils::helpers::*;
-use super::collision::{self, *};
+use super::collision::*;
 use super::{rigid_body::RigidBody, shape::Shape, shape_type::ShapeType};
 
 // The soft body string is implemented based on Position Based Dynamics 
@@ -20,7 +19,7 @@ pub struct Attachment {
 }
 
 impl Attachment {
-    fn get_attachment_point(&self) -> Vector2f<f64> {
+    pub fn get_attachment_point(&self) -> Vector2f<f64> {
         let obj = self.obj_ref.borrow();
         obj.shape.get_center() + self.rel_pos.rotate(obj.shape.get_rotation())
     }
@@ -36,8 +35,8 @@ pub struct StringJoint {
 
 impl StringJoint {
     fn get_inv_mass(&self) -> f64 {
-        if let Some(att) = &self.attachment {
-            att.obj_ref.borrow().get_inv_mass()
+        if let Some(attachment) = &self.attachment {
+            attachment.obj_ref.borrow().get_inv_mass()
         } else {
             1.0 / self.mass
         }
@@ -68,8 +67,10 @@ pub struct StringBody {
 const BASE_DAMPING: f64 = 0.2;
 const CONSTRAINT_ITERATIONS: usize = 8;
 const BASE_STIFFNESS: f64 = 0.9;
+#[allow(dead_code)]
 const BASE_REST_LENGTH: f64 = 10.0;
 const BASE_JOINT_MASS: f64 = 10.0;
+#[allow(dead_code)]
 const BASE_TEAR_LENGTH: f64 = 100.0;
 
 impl StringBody {
@@ -353,8 +354,9 @@ impl StringBody {
         let mut constraints = vec![];
         let string_aabb = self.get_aabb();
         'obj_loop: for obj_ref in objects {
-            let mut obj = obj_ref.borrow_mut();
+            let obj = obj_ref.borrow_mut();
             let obj_step = obj.linear_velocity * dt;
+            let aabb = obj.shape.get_aabb();
 
             let mut indices_to_skip = vec![];
             for (i, joint) in self.joints.iter().enumerate() {
@@ -366,7 +368,7 @@ impl StringBody {
                 }
 
                 let rel_vel = obj.linear_velocity - joint.velocity;
-                if !obj.shape.get_aabb().expand_by(rel_vel).overlap(&string_aabb) {
+                if !aabb.expand_by(rel_vel).overlap(&string_aabb) {
                     indices_to_skip.push(i);
                 }
             }
@@ -413,12 +415,13 @@ impl StringBody {
 
                 // Double check using ray tracing
                 if collision.is_none() {
-                    obj.shape.translate(-obj_step);
-                    collision = match &obj.shape {
-                        ShapeType::Circle(c) => swept_circle_vs_segment(c, obj_step, a.predicted_position, b.predicted_position),
-                        ShapeType::Polygon(p) => swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position),
-                    };
-                    obj.shape.translate(obj_step);  
+                    let min_dimension = aabb.width().min(aabb.height());
+                    if obj.linear_velocity.len_squared() >= min_dimension * min_dimension / 2.0 {
+                        collision = match &obj.shape {
+                            ShapeType::Circle(c) => swept_circle_vs_segment(c, obj_step, a.predicted_position, b.predicted_position),
+                            ShapeType::Polygon(p) => swept_polygon_vs_segment(p, obj_step, a.predicted_position, b.predicted_position),
+                        };
+                    }
                 }
 
                 if let Some(collision) = collision {
@@ -438,7 +441,7 @@ impl StringBody {
         constraints
     }
 
-    pub fn draw(&self, transform: Matrix2d, c: Context, gl: &mut GlGraphics) {
+    pub fn draw(&self, transform: Matrix2d, _: Context, gl: &mut GlGraphics) {
         for i in 0..self.joints.len() {
             if i < self.joints.len() - 1 {
                 let a = &self.joints[i];

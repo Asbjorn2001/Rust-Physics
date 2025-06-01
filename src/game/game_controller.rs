@@ -12,6 +12,7 @@ pub struct GameController {
     pub cursor_pos: Vector2f<f64>,
 }
 
+#[allow(dead_code)]
 impl GameController {
     pub fn new(game: Game) -> Self {
         Self { 
@@ -46,7 +47,7 @@ impl GameController {
                         self.game.update(self.game.physics.dt);
                     }
                 }
-                Key::D => self.game.settings.debug_mode = !self.game.settings.debug_mode,
+                Key::X => self.game.settings.debug_mode = !self.game.settings.debug_mode,
                 _ => {}
             }
         }

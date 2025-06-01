@@ -76,6 +76,7 @@ impl ShapeType {
         }
     } 
 
+    #[allow(dead_code)]
     pub fn set_rotation(&mut self, rotation: f64) {
         match self {
             ShapeType::Circle(c) => c.rotation = rotation,
@@ -90,6 +91,7 @@ impl ShapeType {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_color(&self) -> [f32; 4] {
         match self {
             ShapeType::Circle(c) => c.color,

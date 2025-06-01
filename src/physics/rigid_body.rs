@@ -1,9 +1,8 @@
 use core::f64;
-use std::{mem, vec};
+use std::{vec};
 use graphics::math::Matrix2d;
-use graphics::{color, ellipse, line, triangulation, Context, ImageSize, Rectangle, Transformed};
+use graphics::{color, Context, Transformed};
 use opengl_graphics::{GlGraphics, Texture};
-use piston_window::{texture, TextureSettings};
 
 use crate::Vector2f;
 use crate::game::PhysicsData;
@@ -11,14 +10,19 @@ use crate::physics::shape_type::ShapeType;
 use crate::physics::shape::Shape;
 use crate::physics::polygon::Polygon;
 use crate::physics::circle::Circle;
-use super::material::{self, *};
+use super::material::*;
 use super::tiled_mesh::TiledMesh;
-use super::collision::{self, *};
+use super::collision::*;
 
+#[allow(dead_code)]
 pub const GRAVITY: Vector2f<f64> = Vector2f { x: 0.0, y: 90.816 };
+#[allow(dead_code)]
 pub const AIR_RESISTANCE: f64 = 0.08;
+#[allow(dead_code)]
 pub const BASE_STATIC_FRICTION: f64 = 0.6;
+#[allow(dead_code)]
 pub const BASE_DYNAMIC_FRICTION: f64 = 0.4;
+#[allow(dead_code)]
 pub const BASE_ELASTICITY: f64 = 0.5;
 
 

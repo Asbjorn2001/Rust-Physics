@@ -10,13 +10,11 @@ mod utils;
 mod physics;
 mod game_state;
 
-use std::path::Path;
-
 use piston_window::{Filter, TextureSettings};
 use utils::vector2f::Vector2f;
 use glutin_window::GlutinWindow as Window;
 use graphics::*;
-use kira::{AudioManager, AudioManagerSettings, DefaultBackend, PlaySoundError};
+use kira::{AudioManager, AudioManagerSettings, DefaultBackend};
 use opengl_graphics::{GlGraphics, OpenGL, Texture};
 use piston::event_loop::{EventSettings, Events};
 use piston::input::*;
@@ -44,13 +42,13 @@ fn main() {
     
     let mut gl = GlGraphics::new(opengl);
 
-    let args: Vec<_> = std::env::args().collect();
+    let _: Vec<_> = std::env::args().collect();
 
     // Load the font
     let ts = TextureSettings::new().filter(Filter::Nearest);
     let mut glyphs: GlyphCache<'static, (), Texture> = GlyphCache::new(FONT, (), ts).unwrap();
     
-    let audio_manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default()).unwrap();
+    let _ = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default()).unwrap();
 
     let game = Game::default();
     let mut game_controller = GameController::new(game);

@@ -1,4 +1,4 @@
-use graphics::{color, line, math::Matrix2d, Context, Transformed};
+use graphics::{color, line, math::Matrix2d, Context};
 use opengl_graphics::{GlGraphics, Texture};
 use graphics::triangulation::*;
 use piston_window::Graphics;

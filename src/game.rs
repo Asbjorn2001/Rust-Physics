@@ -2,26 +2,16 @@ pub mod game_controller;
 pub mod game_view;
 pub mod benchmarks;
 
-use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::VecDeque;
-use std::mem::transmute;
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Instant;
 
 use benchmarks::BenchmarkTests;
-use graphics::math::scale;
-use graphics::math::translate;
 use graphics::math::Matrix2d;
-use graphics::rectangle;
-use graphics::rectangle::square;
 use graphics::Rectangle;
 use graphics::Transformed;
-use piston::UpdateArgs;
 use piston_window::TextureSettings;
-use rand::distr::Map;
 use rand::seq::SliceRandom;
 
 use crate::physics::material::*;
@@ -30,21 +20,23 @@ use crate::physics::rigid_body::RigidBody;
 use crate::physics::string_body::Attachment;
 use crate::Vector2f;
 use crate::utils::helpers::*;
-use crate::physics::collision::CollisionData;
 use crate::GlGraphics;
 use crate::GlyphCache;
 use crate::Texture;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
-use crate::physics::shape::Renderable;
 use crate::color;
-use crate::physics::rigid_body::*;
 use crate::physics::string_body::StringBody;
 use crate::Context;
 
 
+
 const PHYSICS_ITERATIONS: usize = 8;
+
+#[allow(dead_code)]
 const MAX_SCALE: f64 = 10.0;
+
+#[allow(dead_code)]
 const MIN_SCALE: f64 = 0.1;
 
 pub struct Projectile {
@@ -59,7 +51,6 @@ pub struct StringStart {
 }
 
 pub enum Utility {
-    Empty,
     Launch,
     String(Option<StringStart>),
 }
@@ -136,13 +127,14 @@ pub struct ContactDebug {
 pub struct Game {
     pub settings: GameSettings,
     pub physics: PhysicsData,
+    pub player: Rc<RefCell<RigidBody>>,
     pub bodies: Vec<Rc<RefCell<RigidBody>>>,
+    pub strings: Vec<Rc<RefCell<StringBody>>>,
     pub projectile: Projectile,
     pub contacts: Vec<ContactDebug>,
     pub textures: HashMap<MaterialName, Rc<Texture>>,
     pub context: Context,
     pub camera_transform: Matrix2d,
-    pub strings: Vec<Rc<RefCell<StringBody>>>,
     pub benchmarks: BenchmarkTests,
 }
 
@@ -151,7 +143,7 @@ impl Default for Game {
         // Create bodies
         let floor_shape = ShapeType::Polygon(Polygon::new_rectangle(
             Vector2f::new(640.0, 650.0), 
-            1000.0, 
+            4000.0, 
             50.0, 
             color::OLIVE
         ));
@@ -182,6 +174,9 @@ impl Default for Game {
                 true,
         )));
 
+        let player = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), WOOD, false);
+        let player_ref = Rc::new(RefCell::new(player.clone()));
+
         let tex_settings = TextureSettings::new();
         let tex_path = Path::new("./src/assets/textures/materials");        
         let mut tex_map = HashMap::new();
@@ -191,32 +186,11 @@ impl Default for Game {
         tex_map.insert(MaterialName::Ice, Rc::new(Texture::from_path(Path::new(&tex_path).join("ice.png"), &tex_settings).unwrap()));
         tex_map.insert(MaterialName::Wood, Rc::new(Texture::from_path(Path::new(&tex_path).join("wood.png"), &tex_settings).unwrap()));
 
-        let mut string1 = StringBody::new(Vector2f::new(640.0, 320.0), Vector2f::new(640.0, 550.0), 10);
-
-        let head = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), STEEL, false);
-        let head_ref = Rc::new(RefCell::new(head.clone()));
-        let head_att = Attachment { obj_ref: head_ref.clone(), rel_pos: head.shape.find_closest_surface_point(string1.joints[0].position).0 - head.shape.get_center()};
-        string1.joints[0].attachment = Some(head_att);
-
-        let tail = RigidBody::from(Polygon::new_regular_polygon(5, 25.0, Vector2f::new(640.0, 500.0), color::GRAY));
-        let tail_ref = Rc::new(RefCell::new(tail.clone()));
-        let tail_att = Attachment { obj_ref: tail_ref.clone(), rel_pos: tail.shape.find_closest_surface_point(string1.joints.last().unwrap().position).0 - tail.shape.get_center() };
-        string1.joints.last_mut().unwrap().attachment = Some(tail_att);
-
-        let mut string2 = StringBody::new(Vector2f::new(640.0, 680.0), Vector2f::new(640.0, 1000.0), 20);
-        
-        let floor_att = Attachment { obj_ref: floor_ref.clone(), rel_pos: floor.shape.find_closest_surface_point(string2.joints[0].position).0 - floor.shape.get_center() };
-        string2.joints[0].attachment = Some(floor_att);
-
-        let floor_body = RigidBody::from(Polygon::new_square(Vector2f::new(640.0, 1100.0), 50.0, color::GRAY));
-        let floor_body_ref = Rc::new(RefCell::new(floor_body.clone()));
-        let floor_body_att = Attachment { obj_ref: floor_body_ref.clone(), rel_pos: floor_body.shape.find_closest_surface_point(string2.joints.last().unwrap().position).0 - floor_body.shape.get_center() };
-        string2.joints.last_mut().unwrap().attachment = Some(floor_body_att);
-
         Self { 
             settings: GameSettings::default(), 
             physics: PhysicsData::default(),
-            bodies: vec![floor_ref, floor_body_ref, ramp1, ramp2, triangle, head_ref, tail_ref], 
+            player: player_ref.clone(),
+            bodies: vec![floor_ref, ramp1, ramp2, triangle, player_ref], 
             projectile: Projectile { 
                 target: None, 
                 body: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
@@ -226,14 +200,14 @@ impl Default for Game {
             textures: tex_map,
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            strings: vec![Rc::new(RefCell::new(string1)), Rc::new(RefCell::new(string2))],
+            strings: vec![],
             benchmarks: BenchmarkTests::default(),
         }
     }
 }
 
 impl Game {
-    pub fn draw(&self, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+    pub fn draw(&self, _: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         graphics::clear(color::WHITE, gl);
 
         for string in self.strings.as_slice() {
@@ -285,6 +259,7 @@ impl Game {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_camera(&mut self, c: Context) {
         self.context = c;
         let dims = Vector2f::from(c.get_view_size());

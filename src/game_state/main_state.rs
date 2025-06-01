@@ -15,7 +15,7 @@ pub struct MainState {
 }
 
 impl GameState for MainState {
-    fn draw(&self, game: &Game, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
+    fn draw(&self, _: &Game, glyphs: &mut GlyphCache<'static, (), Texture>, c: Context, gl: &mut GlGraphics) {
         if self.open_settings {
             self.settings_menu.draw(glyphs, c, gl);
         } else {
@@ -92,7 +92,7 @@ impl From<&Game> for MainState {
             button_position, 
             button_size, 
             display,
-            |btn, event, game| { 
+            |btn, event, _| { 
                 match event {
                     GUIEvent::Click => println!("Multiplayer not implemented yet"),
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
@@ -109,7 +109,7 @@ impl From<&Game> for MainState {
             button_position, 
             button_size, 
             display,
-            |btn, event, game| { 
+            |btn, event, _| { 
                 match event {
                     GUIEvent::Click => return GUIEvent::Custom("open_settings".to_string()),
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
@@ -127,7 +127,7 @@ impl From<&Game> for MainState {
             button_position, 
             button_size, 
             display,
-            |btn, event, game| {
+            |btn, event, _| {
                 match event {
                     GUIEvent::Click => return GUIEvent::Quit,
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,

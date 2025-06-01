@@ -4,6 +4,7 @@ use rand::Rng;
 
 use super::helpers;
 
+#[allow(dead_code)]
 pub const EPSILON: f64 = 0.0005;
 
 #[derive(Clone, Copy, Debug)]
