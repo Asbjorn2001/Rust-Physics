@@ -6,4 +6,4 @@ pub mod collision;
 pub mod rigid_body;
 pub mod material;
 pub mod tiled_mesh;
-pub mod string_body;
+pub mod soft_body;

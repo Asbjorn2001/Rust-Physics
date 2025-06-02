@@ -14,40 +14,40 @@ pub struct Polygon {
     pub local_vertices: Vec<Vector2f<f64>>,
     pub center: Vector2f<f64>,
     pub rotation: f64,
-    pub color: [f32; 4],
+    area: f64,
+    intertia: f64,
 }
 
 impl Renderable for Polygon {
-    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics) {
+    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics, color: [f32; 4]) {
         let verts: Vec<[f64; 2]> = self.get_transformed_vertices().iter().map(|&v| v.into()).collect();
 
-        graphics::polygon(self.color, &verts, transform, gl);
+        graphics::polygon(color, &verts, transform, gl);
     }
 }
 
 impl Shape for Polygon {
     fn area(&self) -> f64 {
-        let n = self.local_vertices.len();
-        let mut sum = 0.0;
-        for i in 0..n {
-            let p1 = self.local_vertices[i];
-            let p2 = self.local_vertices[(i + 1) % n];
-            sum += p1.cross(p2);
-        }
-        sum.abs() / 2.0
+        return self.area;
     }
 
     fn momemnt_of_inertia(&self) -> f64 {
-        let n = self.local_vertices.len();
-        let mut intertia = 0.0; 
+        return self.intertia;
+    }
 
-        for i in 0..n {
-            let p1 = self.local_vertices[i];
-            let p2 = self.local_vertices[(i + 1) % n];
-            intertia += p1.cross(p2) * (p1.dot(p1) + p1.dot(p2) + p2.dot(p2));
+    fn get_aabb(&self) -> AABB {
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY; 
+        for v in self.get_transformed_vertices() {
+            min_x = min_x.min(v.x);
+            max_x = max_x.max(v.x);
+            min_y = min_y.min(v.y);
+            max_y = max_y.max(v.y);
         }
-        
-        (intertia / 12.0).abs()
+
+        return AABB { top_left: Vector2f::new(min_x, min_y), bottom_right: Vector2f::new(max_x, max_y) };
     }
 
     fn contains_point(&self, point: Vector2f<f64>) -> bool {
@@ -69,71 +69,10 @@ impl Shape for Polygon {
             }
         }
 
-        true
-    }
-}
-
-impl Polygon {
-    pub fn new_rectangle(center: Vector2f<f64>, width: f64, height: f64, color: [f32; 4]) -> Self {
-        let half_width = width / 2.0;
-        let half_height = height / 2.0;
-        let local_verts = vec![
-            Vector2f::new(-half_width, -half_height), // Top left
-            Vector2f::new(half_width, -half_height), // Top right
-            Vector2f::new(half_width, half_height), // Bottom right
-            Vector2f::new(-half_width, half_height), // Bottom left
-        ];
-
-        Self { 
-            local_vertices: local_verts, 
-            center, 
-            rotation: 0.0, 
-            color, 
-        }
+        return true;
     }
 
-    pub fn new_square(position: Vector2f<f64>, size: f64, color: [f32; 4]) -> Self {
-        Self::new_rectangle(position, size, size, color)
-    }
-
-    pub fn new_regular_polygon(n_sides: u32, radius: f64, center: Vector2f<f64>, color: [f32; 4]) -> Self {
-        let mut angle = PI * 270.0 / 180.0; // Starting at 270 degrees
-        let angle_increment = (2.0 * PI) / n_sides as f64;
-        if n_sides % 2 == 0 { angle += angle_increment / 2.0; }
-        let mut local_verts = vec![];
-        for _ in 0..n_sides {
-            let x = radius * f64::cos(angle);
-            let y = radius * f64::sin(angle);
-            local_verts.push(Vector2f::new(x, y));
-            angle += angle_increment;
-        }
-
-        Self { 
-            local_vertices: local_verts, 
-            center, 
-            rotation: 0.0, 
-            color,
-        }
-    }
-
-    pub fn new(vertices: Vec<Vector2f<f64>>, center_pos: Vector2f<f64>, color: [f32; 4]) -> Self {
-        let center = Self::compute_center(&vertices);
-        let localized_verts: Vec<Vector2f<f64>> = vertices.iter().map(|&v| v - center).collect();
-
-        Self { 
-            local_vertices: localized_verts, 
-            center: center_pos, 
-            rotation: 0.0, 
-            color: color 
-        }
-    }
-
-    pub fn get_transformed_vertices(&self) -> Vec<Vector2f<f64>> {
-        self.local_vertices.iter().map(|v| v.rotate(self.rotation) + self.center).collect()
-    }
-
-    // Returns closest surface point and surface normal
-    pub fn find_closest_surface_point(&self, point: Vector2f<f64>) -> (Vector2f<f64>, Vector2f<f64>) {
+    fn find_closest_surface_point(&self, point: Vector2f<f64>) -> (Vector2f<f64>, Vector2f<f64>) {
         let verts = self.get_transformed_vertices();
         let mut edge = Vector2f::zero();
         let mut closest_point = Vector2f::zero();
@@ -150,22 +89,72 @@ impl Polygon {
             }
         }
 
-        (closest_point, edge.perpendicular().normalize())
+        return (closest_point, edge.perpendicular().normalize());
+    }
+}
+
+impl Polygon {
+    pub fn new_rectangle(center: Vector2f<f64>, width: f64, height: f64, rotation: f64) -> Self {
+        let half_width = width / 2.0;
+        let half_height = height / 2.0;
+        let local_verts = vec![
+            Vector2f::new(-half_width, -half_height), // Top left
+            Vector2f::new(half_width, -half_height), // Top right
+            Vector2f::new(half_width, half_height), // Bottom right
+            Vector2f::new(-half_width, half_height), // Bottom left
+        ];
+
+        Self { 
+            area: Self::compute_area(&local_verts),
+            intertia: Self::compute_momemnt_of_inertia(&local_verts),
+            local_vertices: local_verts, 
+            center, 
+            rotation,
+        }
     }
 
-    pub fn get_aabb(&self) -> AABB {
-        let mut min_x = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_y = f64::NEG_INFINITY; 
-        for v in self.get_transformed_vertices() {
-            min_x = min_x.min(v.x);
-            max_x = max_x.max(v.x);
-            min_y = min_y.min(v.y);
-            max_y = max_y.max(v.y);
+    #[allow(dead_code)]
+    pub fn new_square(position: Vector2f<f64>, size: f64, rotation: f64) -> Self {
+        Self::new_rectangle(position, size, size, rotation)
+    }
+
+    pub fn new_regular_polygon(n_sides: u32, radius: f64, center: Vector2f<f64>, rotation: f64) -> Self {
+        let mut angle = PI * 270.0 / 180.0; // Starting at 270 degrees
+        let angle_increment = (2.0 * PI) / n_sides as f64;
+        if n_sides % 2 == 0 { angle += angle_increment / 2.0; }
+        let mut local_verts = vec![];
+        for _ in 0..n_sides {
+            let x = radius * f64::cos(angle);
+            let y = radius * f64::sin(angle);
+            local_verts.push(Vector2f::new(x, y));
+            angle += angle_increment;
         }
 
-        AABB { top_left: Vector2f::new(min_x, min_y), bottom_right: Vector2f::new(max_x, max_y) }
+        Self { 
+            area: Self::compute_area(&local_verts),
+            intertia: Self::compute_momemnt_of_inertia(&local_verts),
+            local_vertices: local_verts, 
+            center, 
+            rotation, 
+        }
+    }
+
+    pub fn new(vertices: Vec<Vector2f<f64>>, center_pos: Vector2f<f64>, rotation: f64) -> Self {
+        let center = Self::compute_center(&vertices);
+        let localized_verts: Vec<Vector2f<f64>> = vertices.iter().map(|&v| v - center).collect();
+
+        Self { 
+            area: Self::compute_area(&localized_verts),
+            intertia: Self::compute_momemnt_of_inertia(&localized_verts),
+            local_vertices: localized_verts, 
+            center: center_pos, 
+            rotation, 
+            
+        }
+    }
+
+    pub fn get_transformed_vertices(&self) -> Vec<Vector2f<f64>> {
+        return self.local_vertices.iter().map(|v| v.rotate(self.rotation) + self.center).collect();
     }
 
     fn compute_center(vertices: &Vec<Vector2f<f64>>) -> Vector2f<f64> {
@@ -184,6 +173,30 @@ impl Polygon {
             sum_weight += weight;
         }
         
-        sum_center / sum_weight
+        return sum_center / sum_weight;
+    }
+
+    fn compute_area(vertices: &Vec<Vector2f<f64>>) -> f64 {
+        let n = vertices.len();
+        let mut sum = 0.0;
+        for i in 0..n {
+            let p1 = vertices[i];
+            let p2 = vertices[(i + 1) % n];
+            sum += p1.cross(p2);
+        }
+        return sum.abs() / 2.0;
+    }
+
+    fn compute_momemnt_of_inertia(vertices: &Vec<Vector2f<f64>>) -> f64 {
+        let n = vertices.len();
+        let mut intertia = 0.0; 
+
+        for i in 0..n {
+            let p1 = vertices[i];
+            let p2 = vertices[(i + 1) % n];
+            intertia += p1.cross(p2) * (p1.dot(p1) + p1.dot(p2) + p2.dot(p2));
+        }
+        
+        return (intertia / 12.0).abs();
     }
 }

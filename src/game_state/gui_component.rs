@@ -265,7 +265,7 @@ impl Display {
             }
             DisplayContent::Shape(shape) => {
                 let offset = (position + size / 2.0) - shape.get_center();
-                shape.draw(c.transform.trans_pos(offset), gl);
+                shape.draw(c.transform.trans_pos(offset), gl, color::BLACK);
             } 
             DisplayContent::Body(body, tex) => {
                 let offset = (position + size / 2.0) - body.shape.get_center();

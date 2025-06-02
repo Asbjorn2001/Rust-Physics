@@ -59,7 +59,7 @@ impl From<&Circle> for TiledMesh {
     fn from(circle: &Circle) -> Self {
         let r = circle.radius as i32;
         let verts = Polygon::new_regular_polygon(
-            circle.radius as u32 * 3, circle.radius, Vector2f::new(0.0, 0.0), color::WHITE).local_vertices;
+            circle.radius as u32 * 3, circle.radius, Vector2f::new(0.0, 0.0), circle.rotation).local_vertices;
 
         Self { 
             tiles: generate_tiles(-r, r, -r, r, verts),

@@ -25,7 +25,8 @@ impl Attachment {
     }
 }
 
-pub struct StringJoint {
+#[derive(Clone)]
+pub struct Joint {
     pub position: Vector2f<f64>,
     pub predicted_position: Vector2f<f64>,
     pub velocity: Vector2f<f64>,
@@ -33,7 +34,17 @@ pub struct StringJoint {
     pub attachment: Option<Attachment>,
 }
 
-impl StringJoint {
+impl Joint {
+    pub fn new(position: Vector2f<f64>, attachment: Option<Attachment>) -> Self {
+        Self { 
+            position, 
+            predicted_position: position, 
+            velocity: Vector2f::zero(), 
+            mass: BASE_JOINT_MASS, 
+            attachment, 
+        }
+    }
+
     fn get_inv_mass(&self) -> f64 {
         if let Some(attachment) = &self.attachment {
             attachment.obj_ref.borrow().get_inv_mass()
@@ -43,7 +54,8 @@ impl StringJoint {
     }
 }
 
-pub struct StringConstraint {
+#[derive(Clone, Copy)]
+pub struct Constraint {
     pub index_a: usize,
     pub index_b: usize,
     pub rest_length: f64,
@@ -51,6 +63,7 @@ pub struct StringConstraint {
     pub stiffness: f64,    
 }
 
+#[derive(Clone)]
 pub struct CollisionConstraint {
     pub index: usize,
     pub contact_point: Vector2f<f64>,
@@ -58,9 +71,10 @@ pub struct CollisionConstraint {
     pub object: Rc<RefCell<RigidBody>>,
 }
 
-pub struct StringBody {
-    pub joints: Vec<StringJoint>,
-    pub constraints: Vec<StringConstraint>,
+#[derive(Clone)]
+pub struct SoftBody {
+    pub joints: Vec<Joint>,
+    pub constraints: Vec<Constraint>,
     pub damping: f64,
 }
 
@@ -69,12 +83,39 @@ const CONSTRAINT_ITERATIONS: usize = 8;
 const BASE_STIFFNESS: f64 = 0.9;
 #[allow(dead_code)]
 const BASE_REST_LENGTH: f64 = 10.0;
-const BASE_JOINT_MASS: f64 = 10.0;
+const BASE_JOINT_MASS: f64 = 50.0;
 #[allow(dead_code)]
 const BASE_TEAR_LENGTH: f64 = 100.0;
 
-impl StringBody {
-    pub fn new(start_position: Vector2f<f64>, end_position: Vector2f<f64>, num_joints: usize) -> Self {
+impl From<Vec<Joint>> for SoftBody {
+    fn from(joints: Vec<Joint>) -> Self {
+        let stiffness = 1.0 - f64::powf(1.0 - BASE_STIFFNESS, 1.0 / CONSTRAINT_ITERATIONS as f64);
+        let mut constraints = vec![];
+
+        if joints.len() >= 2 {
+            for i in 0..joints.len() - 1 {
+                let rest_length = (joints[i + 1].position - joints[i].position).len();
+                constraints.push(Constraint {
+                    index_a: i,
+                    index_b: i + 1,
+                    rest_length,
+                    tear_length: rest_length * 2.0,
+                    stiffness,
+                });
+            }
+        }
+        
+        Self { 
+            joints,
+            constraints, 
+            damping: BASE_DAMPING 
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl SoftBody {
+    pub fn new_string(start_position: Vector2f<f64>, end_position: Vector2f<f64>, num_joints: usize) -> Self {
         let rel_pos = end_position - start_position;
         let dir = rel_pos.normalize();
         let length = rel_pos.len();
@@ -89,7 +130,7 @@ impl StringBody {
         let mut constraints = vec![];
         for i in 0..num_joints {
             let position = start_position + (dir * rest_length * i as f64);
-            let joint = StringJoint {  
+            let joint = Joint {  
                 position,
                 predicted_position: position,
                 velocity: Vector2f::zero(),
@@ -100,7 +141,7 @@ impl StringBody {
             
             // if this segment is not the last
             if i < num_joints - 1 {
-                let constraint = StringConstraint {
+                let constraint = Constraint {
                     index_a: i,
                     index_b: i + 1,
                     rest_length,
@@ -116,6 +157,30 @@ impl StringBody {
             constraints,
             damping: BASE_DAMPING,
         }
+    }
+
+    pub fn add_joint(&mut self, position: Vector2f<f64>, attachment: Option<Attachment>) {
+        let new_joint = Joint {
+            position,
+            predicted_position: position,
+            velocity: Vector2f::zero(),
+            mass: BASE_JOINT_MASS,
+            attachment,
+        };
+
+        let stiffness = 1.0 - f64::powf(1.0 - BASE_STIFFNESS, 1.0 / CONSTRAINT_ITERATIONS as f64);
+        let n = self.joints.len();
+        let rest_length = (self.joints[n - 1].position - position).len();
+        let new_constraint = Constraint {
+            index_a: n - 1,
+            index_b: n,
+            rest_length,
+            tear_length: rest_length * 2.0,
+            stiffness,
+        };
+
+        self.joints.push(new_joint);
+        self.constraints.push(new_constraint);
     }
 
     fn damp_velocities(&mut self) {
@@ -162,7 +227,7 @@ impl StringBody {
         physics: &PhysicsData, 
         objects: &Vec<Rc<RefCell<RigidBody>>>, 
         contacts: &mut Vec<ContactDebug>
-    ) -> Option<StringBody> {
+    ) -> Option<SoftBody> {
         let dt = physics.dt;
         for joint in self.joints.as_mut_slice() {
             if let Some(att) = &joint.attachment {
@@ -196,6 +261,7 @@ impl StringBody {
                     tear_index = Some(i);
                     break;
                 } 
+                
                 if stretch > 0.0 {
                     let a_inv_mass = a.get_inv_mass();
                     let b_inv_mass = b.get_inv_mass();
@@ -306,7 +372,7 @@ impl StringBody {
         }
     }
 
-    fn tear_string_at(&mut self, i: usize) -> Option<StringBody> {
+    fn tear_string_at(&mut self, i: usize) -> Option<SoftBody> {
         if i == self.constraints.len() - 1 {
             self.constraints.pop();
             self.joints.pop();
@@ -324,7 +390,7 @@ impl StringBody {
                 c.index_a = i;
                 c.index_b = i + 1;
             });
-            return Some(StringBody {
+            return Some(SoftBody {
                 joints: self.joints.split_off(i + 1),
                 constraints,
                 damping: self.damping,
@@ -442,15 +508,15 @@ impl StringBody {
     }
 
     pub fn draw(&self, transform: Matrix2d, _: Context, gl: &mut GlGraphics) {
-        for i in 0..self.joints.len() {
-            if i < self.joints.len() - 1 {
-                let a = &self.joints[i];
-                let b = &self.joints[i + 1];
-                let l = [a.position.x, a.position.y, b.position.x, b.position.y];
-                line(color::RED, 2.0, l, transform, gl);
-                let square = square(a.position.x - 2.5, a.position.y - 2.5, 5.0);
-                ellipse(color::GREEN, square, transform, gl);
-            }
+        for constraint in self.constraints.as_slice() {
+            let (a, b) = (&self.joints[constraint.index_a], &self.joints[constraint.index_b]);
+            let l = [a.position.x, a.position.y, b.position.x, b.position.y];
+            line(color::RED, 2.0, l, transform, gl);
+        }
+
+        for joint in self.joints.as_slice() {
+            let square = square(joint.position.x - 2.5, joint.position.y - 2.5, 5.0);
+            ellipse(color::GREEN, square, transform, gl);
         }
     }
 }

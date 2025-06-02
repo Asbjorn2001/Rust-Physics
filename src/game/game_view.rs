@@ -5,14 +5,17 @@ use crate::GlGraphics;
 use crate::Context;
 
 
+#[allow(dead_code)]
 pub struct GameViewSettings {
 
 }
 
+#[allow(dead_code)]
 pub struct GameView {
     settings: GameViewSettings,   
 }
 
+#[allow(dead_code)]
 impl GameView {
     pub fn new() -> Self {
         Self { settings: GameViewSettings {} }

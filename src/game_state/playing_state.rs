@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::game;
-use crate::game::StringStart;
+use crate::game::game_controller::ControlArgs;
 use crate::game::Utility;
 use crate::physics::material::CONCRETE;
 use crate::physics::material::ICE;
@@ -11,8 +11,9 @@ use crate::physics::material::STEEL;
 use crate::physics::material::WOOD;
 use crate::physics::rigid_body::RigidBody;
 use crate::physics::shape::Shape;
-use crate::physics::string_body::Attachment;
-use crate::physics::string_body::StringBody;
+use crate::physics::soft_body::Attachment;
+use crate::physics::soft_body::Joint;
+use crate::physics::soft_body::SoftBody;
 use crate::physics::*;
 use crate::game_state::gui_component::*;
 use crate::Vector2f;
@@ -26,7 +27,6 @@ use crate::physics::shape_type::ShapeType;
 use super::pause_state::PauseState;
 use crate::Texture;
 use graphics::math::translate;
-use graphics::rectangle::square;
 use piston_window::*;
 use vecmath::row_mat2x3_transform_pos2;
 use crate::game::Game;
@@ -74,28 +74,25 @@ impl GameState for PlayingState {
                     let line = [projectile_pos.x, projectile_pos.y, target.x, target.y];
                     graphics::line(color::BLACK, 1.0, line, game.camera_transform, gl);
 
-                    let projectile = RigidBody::new(game.projectile.body.shape.scale(game.projectile.scale), game.projectile.body.material, false);
+                    let projectile = game.projectile.body.scale(game.projectile.scale);
                     projectile.draw(game.camera_transform, game.textures.get(&projectile.material.name).unwrap(), c, gl);
                 }
             }
-            game::Utility::String(string_start) => {
-                if let Some(start) = string_start {
-                    let square = square(start.position.x, start.position.y, 5.0);
-                    ellipse(color:: RED, square, game.camera_transform, gl);
-                }
+            game::Utility::String(joints) => {
+                SoftBody::from(joints.clone()).draw(game.camera_transform, game.context, gl);
             }
         }
     }   
 
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>> {
+    fn update(&mut self, control_args: &ControlArgs, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>> {
         let mut interaction = false;
         let mut next_state = None;
         for component in self.gui.components.as_mut_slice() {
-            let event = component.update(cursor_pos, e, game);
+            let event = component.update(control_args.cursor_pos(), e, game);
             if !matches!(event, GUIEvent::None) {
                 interaction = true;
             }
-            match component.update(cursor_pos, e, game) {
+            match component.update(control_args.cursor_pos(), e, game) {
                 GUIEvent::Custom(event) => {
                     match event.as_str() {
                         "shape" => self.show_shape_menu = !self.show_shape_menu,
@@ -114,7 +111,7 @@ impl GameState for PlayingState {
         let mut update_menu = |menu: &mut GUI, hide_on_click: bool| -> bool {
             let mut show_menu = true;
             for component in menu.components.as_mut_slice() {
-                let event = component.update(cursor_pos, e, game);
+                let event = component.update(control_args.cursor_pos(), e, game);
                 if !matches!(event, GUIEvent::None) {
                     interaction = true;
                 }
@@ -152,7 +149,7 @@ impl GameState for PlayingState {
         let dims = Vector2f::from(game.context.get_view_size());
         let inv_scale = 1.0 / game.settings.camera.scale;
         let transform = translate(game.settings.camera.position.into()).scale(inv_scale, inv_scale).trans_pos(-dims / 2.0);
-        let cursor_world_position = Vector2f::from(row_mat2x3_transform_pos2(transform, cursor_pos.into()));
+        let cursor_world_position = Vector2f::from(row_mat2x3_transform_pos2(transform, control_args.cursor_pos().into()));
 
         // Set target on press
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
@@ -160,67 +157,30 @@ impl GameState for PlayingState {
                 game::Utility::Launch => if !interaction {
                     game.projectile.target = Some(cursor_world_position.into())
                 },
-                game::Utility::String(string_start) => if !interaction {
-                    if let Some(start) = string_start {
-                        let mut end_position = cursor_world_position;
-                        let mut end_attachment = None;
-                        for obj_ref in game.bodies.as_slice() {
-                            let obj = obj_ref.borrow();
-                            if obj.shape.contains_point(end_position) {
-                                end_position = if obj.is_static {
-                                    obj.shape.find_closest_surface_point(end_position).0
-                                } else {
-                                    obj.shape.get_center()
-                                };
-                                let rel_pos = (end_position - obj.shape.get_center()).rotate(-obj.shape.get_rotation());
-                                end_attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
-                                break;
-                            } 
-                        }
-
-                        if let Some(att) = &start.attachment {
-                            start.position = att.get_attachment_point();
-                        }
-                        let len = (end_position - start.position).len();
-                        let num_joints  = len as usize / 10;
-                        if num_joints > 1 {
-                            let mut string = StringBody::new(start.position, end_position, num_joints);
-                            string.joints[0].attachment = start.attachment.clone();
-                            string.joints.last_mut().unwrap().attachment = end_attachment;
-                            game.strings.push(Rc::new(RefCell::new(string)));
-                        }
-                        
-                        start.attachment = None;
-                        *string_start = None;
-                    } else {
-                        let mut start_position = cursor_world_position;
-                        let mut start_attachment = None;
-                        for obj_ref in game.bodies.as_slice() {
-                            let obj = obj_ref.borrow();
-                            if obj.shape.contains_point(start_position) {
-                                start_position = if obj.is_static {
-                                    obj.shape.find_closest_surface_point(start_position).0
-                                } else {
-                                    obj.shape.get_center()
-                                };
-                                let rel_pos = (start_position - obj.shape.get_center()).rotate(-obj.shape.get_rotation());
-                                start_attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
-                                break;
-                            }
-                        }
-                        *string_start = Some(StringStart { position: start_position, attachment: start_attachment })
-                    }
+                game::Utility::String(joints) => if !interaction {
+                    let mut position = cursor_world_position;
+                    let mut attachment = None;
+                    for obj_ref in game.bodies.as_slice() {
+                        let obj = obj_ref.borrow();
+                        if obj.shape.contains_point(position) {
+                            position = if obj.is_static {
+                                obj.shape.find_closest_surface_point(position).0
+                            } else {
+                                obj.shape.get_center()
+                            };
+                            let rel_pos = (position - obj.shape.get_center()).rotate(-obj.shape.get_rotation());
+                            attachment = Some(Attachment { obj_ref: obj_ref.clone(), rel_pos });
+                            break;
+                        } 
+                    } 
+                    joints.push(Joint::new(position, attachment));
                 }
             }
         }
 
         // Launch on release
-        if let Some(_) = game.projectile.target {
-            game.projectile.body.shape.set_center(cursor_world_position);
-        }
-
         if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
-            match &game.settings.utility {
+            match &mut game.settings.utility {
                 game::Utility::Launch => {
                     if let Some(target) = game.projectile.target {
                         let velocity = (target - cursor_world_position) * 2.0;
@@ -235,11 +195,27 @@ impl GameState for PlayingState {
             }
         }
 
+        match &mut game.settings.utility {
+            Utility::Launch => {
+                if let Some(_) = game.projectile.target {
+                    game.projectile.body.shape.set_center(cursor_world_position);
+                }
+            }
+            Utility::String(joints) => {
+                if let Some(Button::Keyboard(Key::NumPadEnter)) = e.press_args() {
+                    game.strings.push(Rc::new(RefCell::new(SoftBody::from(joints.clone()))));
+                    joints.clear();
+                }
+            }
+        }
+
         let mut player = game.player.borrow_mut();
+
+        if control_args.button_pressed(&Button::Keyboard(Key::A)) { player.linear_velocity.x -= 10.0; }
+        if control_args.button_pressed(&Button::Keyboard(Key::D)) { player.linear_velocity.x += 10.0; }
+
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
-                Key::A => player.linear_velocity.x -= 10.0,
-                Key::D => player.linear_velocity.x += 10.0,
                 Key::Space => player.linear_velocity.y -= 200.0,  
                 Key::Escape => next_state = Some(Box::new(PauseState::from(&*game))),
                 _ => {}
@@ -338,7 +314,7 @@ impl From<&Game> for PlayingState {
                 match event {
                     GUIEvent::Hover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 2.0).border,
                     GUIEvent::UnHover => btn.display.rect.border = Rectangle::new_round_border(color::BLACK, 15.0, 1.0).border,
-                    GUIEvent::Click => game.settings.utility = Utility::String(None),
+                    GUIEvent::Click => game.settings.utility = Utility::String(vec![]),
                     _ => {}
                 }
                 event
@@ -348,7 +324,7 @@ impl From<&Game> for PlayingState {
         // Shape selection
         let mut rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);
         rect.color = color::GRAY;
-        let shape1 = Circle::new(Vector2f::zero(), 25.0, color::BLACK);
+        let shape1 = Circle::new(Vector2f::zero(), 25.0, 0.0);
         let shape_display = Display::new(rect, DisplayContent::Shape(ShapeType::Circle(shape1)));
         let shape_slot1 = GUIButton::new(
             Vector2f::new(25.0, 125.0), 
@@ -372,7 +348,7 @@ impl From<&Game> for PlayingState {
 
         let mut shape_slot2 = shape_slot1.clone();
         shape_slot2.position.x += 100.0;
-        let shape2 = Polygon::new_rectangle(Vector2f::zero(), 55.0, 25.0, color::BLACK);
+        let shape2 = Polygon::new_rectangle(Vector2f::zero(), 55.0, 25.0, 0.0);
         shape_slot2.display.content = DisplayContent::Shape(ShapeType::Polygon(shape2));
 
         let mut shape_slot3 = shape_slot2.clone();
@@ -384,7 +360,7 @@ impl From<&Game> for PlayingState {
             Vector2f::new(20.0, 0.0),
             Vector2f::new(20.0, 20.0) 
         ];
-        let shape3 = Polygon::new(verts, Vector2f::zero(), color::BLACK);
+        let shape3 = Polygon::new(verts, Vector2f::zero(), 0.0);
         shape_slot3.display.content = DisplayContent::Shape(ShapeType::Polygon(shape3));
 
         let mut shape_slot4 = shape_slot3.clone();
@@ -395,7 +371,7 @@ impl From<&Game> for PlayingState {
             Vector2f::new(0.0, 28.0),
             Vector2f::new(-15.0, 0.0) 
         ];
-        let shape4 = Polygon::new(verts, Vector2f::zero(), color::BLACK);
+        let shape4 = Polygon::new(verts, Vector2f::zero(), 0.0);
         shape_slot4.display.content = DisplayContent::Shape(ShapeType::Polygon(shape4));
 
         let rect = Rectangle::new_round_border(color::BLACK, 5.0, 1.0);

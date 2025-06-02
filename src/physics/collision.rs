@@ -441,12 +441,14 @@ impl AABB {
         aabb
     }
 
+    #[allow(dead_code)]
     pub fn contains_point(&self, p: Vector2f<f64>) -> bool {
         p.x >= self.top_left.x && p.x <= self.bottom_right.x &&
         p.y >= self.top_left.y && p.y <= self.bottom_right.y
     }
 }
 
+#[allow(dead_code)]
 pub fn ray_intersects_aabb(ray_origin: Vector2f<f64>, ray_dir: Vector2f<f64>, aabb: &AABB) -> Option<f64> {
     let inv_dir = Vector2f::new(1.0 / ray_dir.x, 1.0 / ray_dir.y);
 

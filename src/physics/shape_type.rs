@@ -16,10 +16,10 @@ pub enum ShapeType {
 }
 
 impl Renderable for ShapeType {
-    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics) {
+    fn draw(&self, transform: Matrix2d, gl: &mut GlGraphics, color: [f32; 4]) {
         match self {
-            ShapeType::Circle(circle) => circle.draw(transform, gl),
-            ShapeType::Polygon(poly) => poly.draw(transform, gl),
+            ShapeType::Circle(circle) => circle.draw(transform, gl, color),
+            ShapeType::Polygon(poly) => poly.draw(transform, gl, color),
         }
     }
 }
@@ -39,10 +39,24 @@ impl Shape for ShapeType {
         }
     }
 
+    fn get_aabb(&self) -> AABB {
+        match self {
+            ShapeType::Circle(c) => c.get_aabb(),
+            ShapeType::Polygon(p) => p.get_aabb(),
+        }
+    }
+
     fn contains_point(&self, point: Vector2f<f64>) -> bool {
         match self {
             ShapeType::Circle(c) => c.contains_point(point),
             ShapeType::Polygon(p) => p.contains_point(point)
+        }
+    }
+
+    fn find_closest_surface_point(&self, point: Vector2f<f64>) -> (Vector2f<f64>, Vector2f<f64>) {
+        match self {
+            ShapeType::Circle(c) => c.find_closest_surface_point(point),
+            ShapeType::Polygon(p) => p.find_closest_surface_point(point),
         }
     }
 }
@@ -91,43 +105,14 @@ impl ShapeType {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn get_color(&self) -> [f32; 4] {
-        match self {
-            ShapeType::Circle(c) => c.color,
-            ShapeType::Polygon(p) => p.color,
-        }
-    }
-
-    pub fn set_color(&mut self, color: [f32; 4]) {
-        match self {
-            ShapeType::Circle(c) => c.color = color,
-            ShapeType::Polygon(p) => p.color = color,
-        }
-    }
-
+    // Returns a clone of the given shape scaled by the ratio
     pub fn scale(&self, ratio: f64) -> Self {
         match self {
-            ShapeType::Circle(c) => ShapeType::Circle(Circle::new(c.center, c.radius * ratio, c.color)),
+            ShapeType::Circle(c) => ShapeType::Circle(Circle::new(c.center, c.radius * ratio, c.rotation)),
             ShapeType::Polygon(p) => {
                 let verts = p.local_vertices.iter().map(|&v| v * ratio).collect();
-                ShapeType::Polygon(Polygon::new(verts, p.center, p.color))
+                ShapeType::Polygon(Polygon::new(verts, p.center, p.rotation))
             } 
-        }
-    }
-
-    // Returns closest surface point and surface normal in that order
-    pub fn find_closest_surface_point(&self, point: Vector2f<f64>) -> (Vector2f<f64>, Vector2f<f64>) {
-        match self {
-            ShapeType::Circle(c) => c.find_closest_surface_point(point),
-            ShapeType::Polygon(p) => p.find_closest_surface_point(point),
-        }
-    }
-
-    pub fn get_aabb(&self) -> AABB {
-        match self {
-            ShapeType::Circle(c) => c.get_aabb(),
-            ShapeType::Polygon(p) => p.get_aabb(),
         }
     }
 }

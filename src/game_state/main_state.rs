@@ -23,11 +23,11 @@ impl GameState for MainState {
         }
     }
 
-    fn update(&mut self, cursor_pos: Vector2f<f64>, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>>{
+    fn update(&mut self, control_args: &ControlArgs, e: &Event, game: &mut Game) -> Option<Box<dyn GameState>>{
         let mut next_state = None;
         if self.open_settings {
             for component in self.settings_menu.components.as_mut_slice() {
-                match component.update(cursor_pos, e, game) {
+                match component.update(control_args.cursor_pos(), e, game) {
                     GUIEvent::Custom(event) => {
                         if event.as_str() == "back" {
                             self.open_settings = false;
@@ -38,7 +38,7 @@ impl GameState for MainState {
             }
         } else {
             for component in self.main_menu.components.as_mut_slice() {
-                match component.update(cursor_pos, e, game) {
+                match component.update(control_args.cursor_pos(), e, game) {
                     GUIEvent::StateChange(state) => next_state = Some(state),
                     GUIEvent::Custom(event) => {
                         if event.as_str() == "open_settings" {

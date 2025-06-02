@@ -15,9 +15,11 @@ use piston_window::TextureSettings;
 use rand::seq::SliceRandom;
 
 use crate::physics::material::*;
+use crate::physics::shape::Shape;
 use crate::physics::shape_type::ShapeType;
 use crate::physics::rigid_body::RigidBody;
-use crate::physics::string_body::Attachment;
+use crate::physics::soft_body::Constraint;
+use crate::physics::soft_body::Joint;
 use crate::Vector2f;
 use crate::utils::helpers::*;
 use crate::GlGraphics;
@@ -26,9 +28,8 @@ use crate::Texture;
 use crate::physics::circle::Circle;
 use crate::physics::polygon::Polygon;
 use crate::color;
-use crate::physics::string_body::StringBody;
+use crate::physics::soft_body::SoftBody;
 use crate::Context;
-
 
 
 const PHYSICS_ITERATIONS: usize = 8;
@@ -45,14 +46,9 @@ pub struct Projectile {
     pub scale: f64,
 }
 
-pub struct StringStart {
-    pub position: Vector2f<f64>,
-    pub attachment: Option<Attachment>,
-}
-
 pub enum Utility {
     Launch,
-    String(Option<StringStart>),
+    String(Vec<Joint>),
 }
 
 pub struct GameSettings {
@@ -129,7 +125,7 @@ pub struct Game {
     pub physics: PhysicsData,
     pub player: Rc<RefCell<RigidBody>>,
     pub bodies: Vec<Rc<RefCell<RigidBody>>>,
-    pub strings: Vec<Rc<RefCell<StringBody>>>,
+    pub strings: Vec<Rc<RefCell<SoftBody>>>,
     pub projectile: Projectile,
     pub contacts: Vec<ContactDebug>,
     pub textures: HashMap<MaterialName, Rc<Texture>>,
@@ -145,37 +141,51 @@ impl Default for Game {
             Vector2f::new(640.0, 650.0), 
             4000.0, 
             50.0, 
-            color::OLIVE
+            0.0,
         ));
         let floor = RigidBody::new(floor_shape, CONCRETE, true);
         let floor_ref = Rc::new(RefCell::new(floor.clone()));
 
-        let mut ramp_shape1 = ShapeType::Polygon(Polygon::new_rectangle(
+        let ramp1 = ShapeType::Polygon(Polygon::new_rectangle(
             Vector2f::new(450.0, 300.0), 
             400.0,
             25.0, 
-            color::TEAL
+            0.5
         ));
-        let mut ramp_shape2 = ramp_shape1.clone();
 
-        ramp_shape1.rotate(0.5);
+        let mut ramp2 = ramp1.clone();
+        ramp2.translate(Vector2f::new(400.0, -150.0));
+        ramp2.rotate(-1.0);
 
-        ramp_shape2.translate(Vector2f::new(400.0, -150.0));
-        ramp_shape2.rotate(-0.5);
-        ramp_shape2.set_color(color::MAROON);
-
-        let ramp1 = Rc::new(RefCell::new(RigidBody::new(ramp_shape1, STEEL, true)));
-        let ramp2 = Rc::new(RefCell::new(RigidBody::new(ramp_shape2, ICE,  true)));
+        let ramp1_ref = Rc::new(RefCell::new(RigidBody::new(ramp1, STEEL, true)));
+        let ramp2_ref = Rc::new(RefCell::new(RigidBody::new(ramp2, ICE,  true)));
 
         let triangle = Rc::new(RefCell::new(RigidBody::new(
             ShapeType::Polygon(
-                Polygon::new_regular_polygon(3, 60.0, Vector2f::new(800.0, 595.0), color::GREEN)),
+                Polygon::new_regular_polygon(3, 60.0, Vector2f::new(800.0, 595.0), 0.0)),
                 WOOD,
                 true,
         )));
 
-        let player = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, color::BLACK)), WOOD, false);
+        let player = RigidBody::new(ShapeType::Circle(Circle::new(Vector2f::new(640.0, 280.0), 25.0, 0.0)), WOOD, false);
         let player_ref = Rc::new(RefCell::new(player.clone()));
+
+        let j1 = Joint::new(Vector2f::new(500.0, 200.0), None);
+        let j2 = Joint::new(Vector2f::new(520.0, 200.0), None);
+        let j3 = Joint::new(Vector2f::new(520.0, 220.0), None);
+        let j4 = Joint::new(Vector2f::new(500.0, 220.0), None);
+
+        let c1 = Constraint { index_a: 0, index_b: 1, rest_length: 20.0, tear_length: 50.0, stiffness: 0.1 };
+        let c2 = Constraint { index_a: 1, index_b: 2, rest_length: 20.0, tear_length: 50.0, stiffness: 0.1 };
+        let c3 = Constraint { index_a: 2, index_b: 3, rest_length: 20.0, tear_length: 50.0, stiffness: 0.1 };
+        let c4 = Constraint { index_a: 3, index_b: 0, rest_length: 20.0, tear_length: 50.0, stiffness: 0.1 };
+        let c5 = Constraint { index_a: 0, index_b: 2, rest_length: 20.0, tear_length: 50.0, stiffness: 0.1 };
+
+        let soft_triangle = SoftBody { 
+            joints: vec![j1, j2, j3, j4], 
+            constraints: vec![c1, c2, c3, c4, c5], 
+            damping: 0.05,
+        };
 
         let tex_settings = TextureSettings::new();
         let tex_path = Path::new("./src/assets/textures/materials");        
@@ -190,17 +200,17 @@ impl Default for Game {
             settings: GameSettings::default(), 
             physics: PhysicsData::default(),
             player: player_ref.clone(),
-            bodies: vec![floor_ref, ramp1, ramp2, triangle, player_ref], 
+            bodies: vec![floor_ref, ramp1_ref, ramp2_ref, triangle, player_ref], 
             projectile: Projectile { 
                 target: None, 
-                body: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, color::BLACK))), 
+                body: RigidBody::from(ShapeType::Circle(Circle::new(Vector2f::zero(), 25.0, 0.0))), 
                 scale: 1.0 
             },
             contacts: vec![], 
             textures: tex_map,
             context: Context::new(),
             camera_transform: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            strings: vec![],
+            strings: vec![Rc::new(RefCell::new(soft_triangle))],
             benchmarks: BenchmarkTests::default(),
         }
     }
@@ -283,9 +293,8 @@ impl Game {
         let mut collisions = vec![];
         for i in 0..self.bodies.len() {
             for j in (i+1)..self.bodies.len() {
-                let (a, b) = get_pair_mut(&mut self.bodies, i, j);
-                let mut a = a.borrow_mut();
-                let mut b = b.borrow_mut();
+                let (a_ref, b_ref) = get_pair_mut(&mut self.bodies, i, j);
+                let (mut a, mut b) = (a_ref.borrow_mut(), b_ref.borrow_mut());
                 if let Some(collision) = a.collide_with(&mut b, self.physics.dt) {
                     self.contacts.extend(collision.contacts.iter().map(|&contact| ContactDebug { contact, normal: collision.normal}));
                     collisions.push((i, j, collision));
