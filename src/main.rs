@@ -34,7 +34,7 @@ fn main() {
     let opengl = OpenGL::V3_2;
 
     // Create a Glutin window.
-    let mut window: Window = WindowSettings::new("piston-game", [WINDOW_WIDTH, WINDOW_HEIGHT])
+    let mut window: Window = WindowSettings::new("physics-playground", [WINDOW_WIDTH, WINDOW_HEIGHT])
         .graphics_api(opengl)
         .resizable(false)
         .build()

@@ -1,10 +1,10 @@
 [package]
-name = "piston-game"
+name = "physics-playground"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "piston-game"
+name = "physics-playground"
 
 [dependencies]
 piston = "1.0.0"

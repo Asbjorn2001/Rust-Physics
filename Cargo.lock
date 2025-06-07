@@ -1426,6 +1426,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
+name = "physics-playground"
+version = "0.1.0"
+dependencies = [
+ "kira",
+ "num-traits",
+ "piston",
+ "piston2d-graphics",
+ "piston2d-opengl_graphics",
+ "piston_window",
+ "pistoncore-glutin_window",
+ "rand 0.9.1",
+ "vecmath",
+]
+
+[[package]]
 name = "piston"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,21 +1456,6 @@ name = "piston-float"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad78bf43dcf80e8f950c92b84f938a0fc7590b7f6866fbcbeca781609c115590"
-
-[[package]]
-name = "piston-game"
-version = "0.1.0"
-dependencies = [
- "kira",
- "num-traits",
- "piston",
- "piston2d-graphics",
- "piston2d-opengl_graphics",
- "piston_window",
- "pistoncore-glutin_window",
- "rand 0.9.1",
- "vecmath",
-]
 
 [[package]]
 name = "piston-gfx_texture"
