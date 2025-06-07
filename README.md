@@ -1,4 +1,5 @@
 Experimental physics engine written in Rust using Piston.
 
-**Dependencies**
+**Dependencies:**
+
 Piston: https://docs.rs/piston/latest/piston/ 
